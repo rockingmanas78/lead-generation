@@ -30,6 +30,8 @@ class ContactExtractor:
 
                 partial_info = self.llm.extract_missing_fields(contact_text, missing_fields)
                 contact_info = merge_data(contact_info, partial_info)
+                if contact_info.get("emails"):
+                    contact_info["emails"] = list(set(contact_info["emails"]))
                 if contact_info.get("phones"):
                     contact_info["phones"] = clean_phone_numbers(contact_info["phones"])
 
