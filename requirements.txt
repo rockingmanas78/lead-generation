@@ -67,7 +67,13 @@ greenlet==3.2.3 ; (python_full_version < '3.14' and platform_machine == 'AMD64')
 h11==0.16.0
     # via
     #   httpcore
+    #   hypercorn
     #   uvicorn
+    #   wsproto
+h2==4.2.0
+    # via hypercorn
+hpack==4.1.0
+    # via h2
 httpcore==1.0.9
     # via httpx
 httptools==0.6.4
@@ -77,6 +83,10 @@ httpx==0.28.1
     #   fastapi
     #   langsmith
     #   openai
+hypercorn==0.17.3
+    # via lead-generation
+hyperframe==6.1.0
+    # via h2
 idna==3.10
     # via
     #   anyio
@@ -125,6 +135,8 @@ packaging==24.2
     # via
     #   langchain-core
     #   langsmith
+priority==2.0.0
+    # via hypercorn
 propcache==0.3.1
     # via
     #   aiohttp
@@ -219,6 +231,8 @@ watchfiles==1.0.5
     # via uvicorn
 websockets==15.0.1
     # via uvicorn
+wsproto==1.2.0
+    # via hypercorn
 yarl==1.20.0
     # via aiohttp
 zstandard==0.23.0
