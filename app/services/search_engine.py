@@ -51,7 +51,7 @@ class SearchEngine:
             1. Create diverse queries using different keyword combinations
             2. Include location-specific terms
             3. Use industry-specific terminology
-            4. Do searching for aggregator websites.
+            4. Do not search for aggregator websites.
             5. Focus on findable contact information
             
 
@@ -153,6 +153,7 @@ class SearchEngine:
             await self.fetch_more_results(session, required_total + 10)
 
         results = session.get_results(offset, num_results)
+        session.last_returned_offset = offset + len(results)
 
         has_more = (offset + len(results)) < len(session.results) or not session.is_exhausted
 
