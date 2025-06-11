@@ -4,7 +4,7 @@ from typing import List, Dict
 from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, SearchResult
 from app.services.search_engine import SearchEngine
-from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest
+from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest, CombinedResult, CombinedSearchExtractResponse, CombinedSearchExtractRequest
 
 router = APIRouter()
 
@@ -48,3 +48,26 @@ def extract_from_urls(request: URLListRequest):
         contact = extractor.extract(url)
         results[url] = ContactInfo(**contact)
     return results
+
+@router.post("/search_and_extract", response_model=CombinedSearchExtractResponse)
+async def search_and_extract(request: CombinedSearchExtractRequest):
+    session_user = "default_user"
+
+    raw = await search_engine.search_with_offset(
+        prompt=request.prompt,
+        user_id=session_user,
+        offset=request.offset,
+        num_results=request.num_results
+    )
+
+    combined_results = []
+    for res in raw["results"]:
+        contact = extractor.extract(res.link)
+        combined_results.append(CombinedResult(search_result=res, contact_info=ContactInfo(**contact)))
+
+    return CombinedSearchExtractResponse(
+        results=combined_results,
+        pagination=raw["pagination"],
+        session_info=raw["session_info"],
+        query_info=raw["query_info"]
+    )
