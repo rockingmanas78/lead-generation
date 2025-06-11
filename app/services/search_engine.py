@@ -77,9 +77,27 @@ class SearchEngine:
         base = f"{user_id}_{prompt}_{datetime.now().date()}"
         return hashlib.md5(base.encode()).hexdigest()
 
+    def build_query(self, query: str) -> str:
+        AGGREGATOR_KEYWORDS = [
+            "justdial.com", "sulekha.com", "indiamart.com", "yellowpages.in", "yelp.com",
+            "tripadvisor.in", "zomato.com", "magicbricks.com", "99acres.com", "housing.com",
+            "makemytrip.com", "goibibo.com", "trivago.in", "booking.com", "airbnb.com", "hotels.com",
+            "trustpilot.com", "glassdoor.com", "g2.com", "clutch.co", "upcity.com", "designrush.com",
+            "comparisun.com", "bestfirms.com", "businesslist.io", "goodfirms.co", "capterra.in",
+            "topdevelopers.co", "serchen.com"
+        ]
+
+        EXCLUDE_KEYWORD = '"Top"'
+
+        excluded_sites = " ".join([f"-site:{site}" for site in AGGREGATOR_KEYWORDS])
+
+        return f"{query} {excluded_sites} -{EXCLUDE_KEYWORD}"
+
     async def call_serp_api(self, query: str, start: int = 0, num: int = 10) -> List[Dict]:
+        modified_query = self.build_query(query)
+
         params = {
-            "q": query,
+            "q": modified_query,
             "api_key": self.serp_api_key,
             "engine": "google",
             "start": start,
