@@ -58,16 +58,22 @@ class LLMParser:
         if not requested:
             return {}
 
+        requested_fields = '\n'.join(requested)
+        json_fields = ', '.join([
+            f'"{f}": []' if f in ["emails", "phones", "addresses"] else f'"{f}": ""'
+            for f in missing_fields if f in field_map
+        ])
+
         prompt = f"""
         Please extract ONLY the following missing contact information from the text:
-        {'\\n'.join(requested)}
+        {requested_fields}
 
         Text to analyze:
         {content}
 
         Respond in JSON format with only these fields:
         {{
-            {', '.join([f'"{f}": []' if f in ["emails", "phones", "addresses"] else f'"{f}": ""' for f in missing_fields if f in field_map])}
+        {json_fields}
         }}
         Only respond with JSON.
         """
