@@ -44,3 +44,10 @@ class CombinedSearchExtractResponse(BaseModel):
     pagination: Dict[str, Any]
     query_info: Dict[str, Any]
     session_info: Dict[str, Any]
+
+class EmailSentimentAnalysisRequest(BaseModel):
+    subject: str
+    body: str
+
+class EmailSentimentAnalysisResponse(BaseModel):
+    sentiment: str

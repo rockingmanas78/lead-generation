@@ -4,12 +4,14 @@ from typing import List, Dict
 from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, SearchResult
 from app.services.search_engine import SearchEngine
-from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest, CombinedResult, CombinedSearchExtractResponse, CombinedSearchExtractRequest
+from app.services.email_sentiment_analysis import EmailSentimentAnalysis
+from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest, CombinedResult, CombinedSearchExtractResponse, CombinedSearchExtractRequest, EmailSentimentAnalysisRequest, EmailSentimentAnalysisResponse
 
 router = APIRouter()
 
 extractor = ContactExtractor()
 search_engine = SearchEngine()
+sentiment_analyser = EmailSentimentAnalysis()
 
 class PromptRequest(BaseModel):
     prompt: str
@@ -71,3 +73,8 @@ async def search_and_extract(request: CombinedSearchExtractRequest):
         session_info=raw["session_info"],
         query_info=raw["query_info"]
     )
+
+@router.post("/analyse_email", response_model=EmailSentimentAnalysisResponse)
+async def analyse_email(request: EmailSentimentAnalysisRequest):
+    sentiment = sentiment_analyser.analyse_sentiment(request.subject, request.body)
+    return EmailSentimentAnalysisResponse(sentiment=sentiment)
