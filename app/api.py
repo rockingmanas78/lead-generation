@@ -5,13 +5,17 @@ from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, SearchResult
 from app.services.search_engine import SearchEngine
 from app.services.email_sentiment_analysis import EmailSentimentAnalysis
-from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest, CombinedResult, CombinedSearchExtractResponse, CombinedSearchExtractRequest, EmailSentimentAnalysisRequest, EmailSentimentAnalysisResponse
+from app.services.cold_email_template import ColdEmailTemplateGenerator
+from app.services.email_personaliser import PersonaliseEmail
+from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest, CombinedResult, CombinedSearchExtractResponse, CombinedSearchExtractRequest, EmailSentimentAnalysisRequest, EmailSentimentAnalysisResponse, ColdEmailTemplateResponse, ColdEmailTemplateRequest, PersonaliseEmailResponse, PersonaliseEmailRequest
 
 router = APIRouter()
 
 extractor = ContactExtractor()
 search_engine = SearchEngine()
 sentiment_analyser = EmailSentimentAnalysis()
+cold_email_template_generator = ColdEmailTemplateGenerator()
+email_personaliser = PersonaliseEmail()
 
 class PromptRequest(BaseModel):
     prompt: str
@@ -78,3 +82,13 @@ async def search_and_extract(request: CombinedSearchExtractRequest):
 async def analyse_email(request: EmailSentimentAnalysisRequest):
     sentiment = sentiment_analyser.analyse_sentiment(request.subject, request.body)
     return EmailSentimentAnalysisResponse(sentiment=sentiment)
+
+@router.post("/email_template_generator", response_model=ColdEmailTemplateResponse)
+async def email_template_generator(request: ColdEmailTemplateRequest):
+    template = cold_email_template_generator.generate_cold_email_template(request.user_prompt)
+    return ColdEmailTemplateResponse(template=template)
+
+@router.post("/email_personalise", response_model=PersonaliseEmailResponse)
+async def email_personalise(request: PersonaliseEmailRequest):
+    email = email_personaliser.personalise_email(request.subject, request.body, request.company_description)
+    return PersonaliseEmailResponse(email=email)

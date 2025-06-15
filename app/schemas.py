@@ -7,7 +7,7 @@ class SearchResult(BaseModel):
     snippet: str
     source: Optional[str] = None
     rank: int
-    
+
 class PromptSearchRequest(BaseModel):
     prompt: str
     num_results: int = 6
@@ -51,3 +51,17 @@ class EmailSentimentAnalysisRequest(BaseModel):
 
 class EmailSentimentAnalysisResponse(BaseModel):
     sentiment: str
+
+class ColdEmailTemplateRequest(BaseModel):
+    user_prompt: str
+
+class ColdEmailTemplateResponse(BaseModel):
+    template: str
+
+class PersonaliseEmailRequest(BaseModel):
+    subject: str
+    body: str
+    company_description: str
+
+class PersonaliseEmailResponse(BaseModel):
+    email: str
