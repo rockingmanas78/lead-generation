@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers.string import StrOutputParser
 from app.schemas import SearchResult
+from app.config import OPENAI_API_KEY, OPENAI_MODEL
 
 class SearchSession:
     def __init__(self, session_id: str, original_prompt: str, queries: List[str]):
@@ -40,7 +41,7 @@ class SearchEngine:
         self.serp_api_key = os.getenv("SERPAPI_KEY")
         self.sessions: Dict[str, SearchSession] = {}
         self.base_url = "https://serpapi.com/search.json"
-        self.llm = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"))
+        self.llm = ChatOpenAI(api_key=OPENAI_API_KEY, model=OPENAI_MODEL)
 
     async def prompt_to_queries(self, user_prompt: str) -> List[str]:
         prompt = ChatPromptTemplate.from_messages([
@@ -53,10 +54,10 @@ class SearchEngine:
             3. Use industry-specific terminology
             4. Do not search for aggregator websites.
             5. Focus on findable contact information
-            
+
 
             Format each query to be Google search-ready.
-            
+
             Example patterns to follow:
             - Direct business type + location + contact
             - Industry associations + location
@@ -201,7 +202,7 @@ class SearchEngine:
     async def get_more_results(self, session_id: str, num_results: int) -> Dict[str, Any]:
         if session_id not in self.sessions:
             raise ValueError("Session not found or expired")
-        
+
         session = self.sessions[session_id]
         current_offset = session.last_returned_offset
         required_total = current_offset + num_results
