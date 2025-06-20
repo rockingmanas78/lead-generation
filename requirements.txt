@@ -60,8 +60,6 @@ frozenlist==1.6.2
     # via
     #   aiohttp
     #   aiosignal
-google-search-results==2.4.2
-    # via lead-generation
 greenlet==3.2.3 ; (python_full_version < '3.14' and platform_machine == 'AMD64') or (python_full_version < '3.14' and platform_machine == 'WIN32') or (python_full_version < '3.14' and platform_machine == 'aarch64') or (python_full_version < '3.14' and platform_machine == 'amd64') or (python_full_version < '3.14' and platform_machine == 'ppc64le') or (python_full_version < '3.14' and platform_machine == 'win32') or (python_full_version < '3.14' and platform_machine == 'x86_64')
     # via sqlalchemy
 h11==0.16.0
@@ -171,7 +169,6 @@ regex==2024.11.6
     # via tiktoken
 requests==2.32.4
     # via
-    #   google-search-results
     #   langchain
     #   langsmith
     #   requests-toolbelt

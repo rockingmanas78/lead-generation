@@ -2,13 +2,16 @@ import os
 import hashlib
 import asyncio
 import aiohttp
+import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers.string import StrOutputParser
 from app.schemas import SearchResult
-from app.config import OPENAI_API_KEY, OPENAI_MODEL
+from app.config import OPENAI_API_KEY, OPENAI_MODEL, GOOGLE_API_KEY, GOOGLE_CSE_ID
+
+logger = logging.getLogger(__name__)
 
 class SearchSession:
     def __init__(self, session_id: str, original_prompt: str, queries: List[str]):
@@ -36,11 +39,15 @@ class SearchSession:
     def needs_more_results(self, required_count: int) -> bool:
         return len(self.results) < required_count and not self.is_exhausted
 
+class GoogleSearchError(Exception):
+    pass
+
 class SearchEngine:
     def __init__(self):
-        self.serp_api_key = os.getenv("SERPAPI_KEY")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.google_cse_id = os.getenv("GOOGLE_CSE_ID")
         self.sessions: Dict[str, SearchSession] = {}
-        self.base_url = "https://serpapi.com/search.json"
+        self.base_url = "https://www.googleapis.com/customsearch/v1"
         self.llm = ChatOpenAI(api_key=OPENAI_API_KEY, model=OPENAI_MODEL)
 
     async def prompt_to_queries(self, user_prompt: str) -> List[str]:
@@ -85,7 +92,7 @@ class SearchEngine:
             "makemytrip.com", "goibibo.com", "trivago.in", "booking.com", "airbnb.com", "hotels.com",
             "trustpilot.com", "glassdoor.com", "g2.com", "clutch.co", "upcity.com", "designrush.com",
             "comparisun.com", "bestfirms.com", "businesslist.io", "goodfirms.co", "capterra.in",
-            "topdevelopers.co", "serchen.com"
+            "topdevelopers.co", "serchen.com", "reddit.com"
         ]
 
         EXCLUDE_KEYWORD = '"Top"'
@@ -94,13 +101,14 @@ class SearchEngine:
 
         return f"{query} {excluded_sites} -{EXCLUDE_KEYWORD}"
 
-    async def call_serp_api(self, query: str, start: int = 0, num: int = 10) -> List[Dict]:
+    async def call_google_search_api(self, query: str, start: int = 0, num: int = 10) -> List[Dict]:
         modified_query = self.build_query(query)
+        num = max(1, min(10, num))
 
         params = {
             "q": modified_query,
-            "api_key": self.serp_api_key,
-            "engine": "google",
+            "key": self.google_api_key,
+            "cx": self.google_cse_id,
             "start": start,
             "num": num,
         }
@@ -110,20 +118,40 @@ class SearchEngine:
                 async with session.get(self.base_url, params=params, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
-                        results = data.get("organic_results", [])
+                        if "items" not in data:
+                            logger.info(f"No search results found for query: {query}")
+                            return []
+
+                        results = data.get("items", [])
                         return [
                             {
-                                "title": r.get("title", ""),
-                                "link": r.get("link", ""),
-                                "snippet": r.get("snippet", ""),
-                                "source": r.get("displayed_link", ""),
+                                "title": item.get("title", ""),
+                                "link": item.get("link", ""),
+                                "snippet": item.get("snippet", ""),
+                                "source": item.get("displayLink", ""),
                                 "rank": start + i + 1
                             }
-                            for i, r in enumerate(results)
+                            for i, item in enumerate(results)
                         ]
+                    else:
+                        error_msg = f"Google API error: HTTP {response.status}"
+                        if response.status == 429:
+                            error_msg += " - Rate limit exceeded"
+                        elif response.status == 403:
+                            error_msg += " - API key invalid or quota exceeded"
+
+                        logger.error(error_msg)
+                        raise GoogleSearchError(error_msg)
+
+        except asyncio.TimeoutError:
+            logger.error(f"Google API request timed out for query: {query}")
+            raise GoogleSearchError("Search request timed out")
+        except aiohttp.ClientError as e:
+            logger.error(f"Google API client error: {e}")
+            raise GoogleSearchError(f"Search service unavailable: {e}")
         except Exception as e:
-            print(f"SERP API error: {e}")
-        return []
+            logger.error(f"Unexpected error in Google search: {e}")
+            raise GoogleSearchError("Search service error")
 
     async def fetch_more_results(self, session: SearchSession, target_count: int):
         current_count = len(session.results)
@@ -141,7 +169,7 @@ class SearchEngine:
                 continue
 
             batch_size = min(10, needed)
-            new_results = await self.call_serp_api(query, current_position, batch_size)
+            new_results = await self.call_google_search_api(query, current_position, batch_size)
 
             if not new_results:
                 continue

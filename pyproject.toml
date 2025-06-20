@@ -8,7 +8,6 @@ dependencies = [
     "aiohttp[speedups]>=3.12.11",
     "beautifulsoup4>=4.13.4",
     "fastapi[standard]>=0.115.12",
-    "google-search-results>=2.4.2",
     "hypercorn>=0.17.3",
     "langchain>=0.3.25",
     "langchain-openai>=0.3.21",
