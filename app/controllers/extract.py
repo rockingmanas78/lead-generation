@@ -1,7 +1,10 @@
+import logging
 from typing import Dict, List
 from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, CombinedSearchExtractResponse, CombinedSearchExtractRequest, CombinedResult
 from app.services.search_engine import SearchEngine
+
+logger = logging.getLogger(__name__)
 
 class ExtractController:
     def __init__(self):
@@ -17,27 +20,56 @@ class ExtractController:
 
     async def search_and_extract_contacts(self, request: CombinedSearchExtractRequest) -> CombinedSearchExtractResponse:
         session_user = "default_user"
+        required_count = request.num_results
+        collected = 0
+        offset = request.offset
+        combined_results = []
 
         raw = await self.search_engine.search_with_offset(
             prompt=request.prompt,
             user_id=session_user,
-            offset=request.offset,
-            num_results=request.num_results
+            offset=offset,
+            num_results=required_count
         )
 
-        combined_results = []
-        for res in raw["results"]:
+        session = raw["session_info"]["session_id"]
+        total_available = raw["pagination"]["total_results_available"]
+
+        results = raw["results"]
+        result_index = 0
+
+        while collected < required_count:
+            if result_index >= len(results):
+                more = await self.search_engine.get_more_results(session_id=session, num_results=10)
+                new_results = more["results"]
+                if not new_results:
+                    break
+                results.extend(new_results)
+
+            res = results[result_index]
+            result_index += 1
+
             contact = self.extractor.extract(res.link)
+            if not contact or (not contact.get("emails") and not contact.get("phones")):
+                logger.info(f"No contact info found for {res.link} Skipping...")
+                continue
             combined_results.append(
                 CombinedResult(
                     search_result=res,
                     contact_info=ContactInfo(**contact)
                 )
             )
+            collected += 1
 
         return CombinedSearchExtractResponse(
             results=combined_results,
-            pagination=raw["pagination"],
+            pagination={
+                "offset": offset,
+                "results_returned": len(combined_results),
+                "total_results_available": len(results),
+                "has_more": result_index < len(results),
+                "next_offset": offset + len(combined_results)
+            },
             session_info=raw["session_info"],
             query_info=raw["query_info"]
         )
