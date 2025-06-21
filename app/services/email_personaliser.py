@@ -1,29 +1,32 @@
 import json
 from langchain_openai import ChatOpenAI
-from langchain_core.output_parsers.string import StrOutputParser
 from app.config import OPENAI_MODEL
+from app.schemas import PersonaliseEmailResponse, ContactInfo
 
 class PersonaliseEmail:
     def __init__(self):
         self.llm = ChatOpenAI(model=OPENAI_MODEL)
-        self.chain = self.llm | StrOutputParser()
 
-    def personalise_email(self, subject: str, body: str, description: str) -> str:
+    def personalise_email(self, template: str, contact_info: ContactInfo) -> str:
         prompt = f"""
-        Take the user's subject line, rough email draft, and target company information.
+        Take the email template and target company information.
 
+        1. Fill up all of the placeholder values in the template with the appropriate company-specific info.
         1.Correct all grammatical and stylistic issues.
         2.Personalize the email using the company description provided to suit the company’s context.
         3.Make the language sound natural and human, avoiding overly formal or robotic tone.
         5.Keep the email concise, friendly, and professional.
 
-        email subject: {subject}
-        email body: {body}
-        company description: {description}
+        email template: {template}
+        company name: {contact_info.company_name}
+        company email: {contact_info.emails}
+        company mobile numbers: {contact_info.phones}
+        company description: {contact_info.description}
         """
 
         try:
-            response = self.chain.invoke(prompt)
+            structured_llm = self.llm.with_structured_output(PersonaliseEmailResponse, method="function_calling")
+            response = structured_llm.invoke(prompt)
             return response
         except Exception:
-            return "Could not generate the email"
+            return PersonaliseEmailResponse(body="Could not generate the email")

@@ -26,8 +26,7 @@ class EmailController:
 
     async def personalise_email(self, request: PersonaliseEmailRequest) -> PersonaliseEmailResponse:
         email = self.email_personaliser.personalise_email(
-            request.subject,
-            request.body,
-            request.company_description
+            request.template,
+            request.company_contact_info
         )
-        return PersonaliseEmailResponse(email=email)
+        return email

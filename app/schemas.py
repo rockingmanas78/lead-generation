@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
 class SearchResult(BaseModel):
@@ -59,9 +59,10 @@ class ColdEmailTemplateResponse(BaseModel):
     template: str
 
 class PersonaliseEmailRequest(BaseModel):
-    subject: str
-    body: str
-    company_description: str
+    template: str
+    company_contact_info: ContactInfo
 
 class PersonaliseEmailResponse(BaseModel):
-    email: str
+    """Personalise the email template"""
+    subject: str = Field(description="The subject line of the email")
+    email_body: str = Field(description="The body of the email")
