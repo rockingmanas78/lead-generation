@@ -11,5 +11,6 @@ dependencies = [
     "hypercorn>=0.17.3",
     "langchain>=0.3.25",
     "langchain-openai>=0.3.21",
+    "pyjwt>=2.10.1",
     "python-dotenv>=1.1.0",
 ]

@@ -18,8 +18,8 @@ class ExtractController:
             results[url] = ContactInfo(**contact)
         return results
 
-    async def search_and_extract_contacts(self, request: CombinedSearchExtractRequest) -> CombinedSearchExtractResponse:
-        session_user = "default_user"
+    async def search_and_extract_contacts(self, request: CombinedSearchExtractRequest, user_id: str) -> CombinedSearchExtractResponse:
+        session_user = user_id
         required_count = request.num_results
         collected = 0
         offset = request.offset

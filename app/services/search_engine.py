@@ -78,8 +78,42 @@ class SearchEngine:
         ])
 
         chain = prompt | self.llm | StrOutputParser()
-        output = await chain.ainvoke({"prompt": user_prompt})
-        return [q.strip() for q in output.split(",") if q.strip()]
+
+        try:
+            output = await chain.ainvoke({"prompt": user_prompt})
+
+            queries = []
+            for line in output.strip().split('\n'):
+                clean_line = line.strip()
+
+                import re
+                clean_line = re.sub(r'^\d+[\.\)]\s*', '', clean_line)
+                clean_line = re.sub(r'^[-*]\s*', '', clean_line)
+                clean_line = clean_line.strip('"').strip("'")
+
+                if clean_line and len(clean_line) > 5:
+                    queries.append(clean_line)
+
+            if not queries and ',' in output:
+                queries = [q.strip().strip('"').strip("'") for q in output.split(',') if q.strip()]
+
+            if not queries:
+                base_terms = user_prompt.lower()
+                queries = [
+                    f"{base_terms} contact information",
+                    f"{base_terms} email phone",
+                    f"{base_terms} address contact details"
+                ]
+
+            return queries[:5]
+
+        except Exception as e:
+            base_terms = user_prompt.lower()
+            return [
+                f"{base_terms} contact information",
+                f"{base_terms} email phone address",
+                f"{base_terms} contact details"
+            ]
 
     def generate_session_id(self, user_id: str, prompt: str) -> str:
         base = f"{user_id}_{prompt}_{datetime.now().date()}"
