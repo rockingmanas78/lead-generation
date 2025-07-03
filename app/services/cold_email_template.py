@@ -24,4 +24,4 @@ class ColdEmailTemplateGenerator:
             response = self.chain.invoke(prompt)
             return response
         except Exception:
-            return "Could not generate the email"
+            raise

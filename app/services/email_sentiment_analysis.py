@@ -30,4 +30,4 @@ class EmailSentimentAnalysis:
             response = self.chain.invoke(prompt)
             return response
         except Exception:
-            return "Could not classify the email."
+            raise

@@ -1,5 +1,5 @@
 from typing import Dict
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, Field
 from app.auth.auth_bearer import JWTBearer
 from app.controllers.extract import ExtractController

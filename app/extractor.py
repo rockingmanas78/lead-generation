@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from app.services.html_fetcher import HTMLFetcher
 from app.services.footer_parser import FooterParser
 from app.services.llm_parser import LLMParser
@@ -10,14 +11,21 @@ class ContactExtractor:
         self.llm = LLMParser()
 
     def extract(self, url: str) -> dict:
-        html = self.fetcher.fetch(url)
+        try:
+            html = self.fetcher.fetch(url)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not fetch the URL: {str(e)}")
+
         if not html:
             return self.llm.extract_contact_info("")
 
         footer_text = self.parser.extract_footer(html)
-        contact_info = self.llm.extract_contact_info(footer_text)
 
-        missing_fields = find_empty_fields(contact_info)
+        try:
+            contact_info = self.llm.extract_contact_info(footer_text)
+            missing_fields = find_empty_fields(contact_info)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Could not extract contact info: {str(e)}")
 
         if missing_fields:
             contact_links = self.parser.find_contact_links(html, url)
@@ -28,7 +36,11 @@ class ContactExtractor:
 
                 contact_text = extract_clean_text(contact_page_html)
 
-                partial_info = self.llm.extract_missing_fields(contact_text, missing_fields)
+                try:
+                    partial_info = self.llm.extract_missing_fields(contact_text, missing_fields)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Could not extract missing fields: {str(e)}")
+
                 contact_info = merge_data(contact_info, partial_info)
                 if contact_info.get("emails"):
                     contact_info["emails"] = list(set(contact_info["emails"]))

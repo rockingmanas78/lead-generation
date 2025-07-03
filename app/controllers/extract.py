@@ -1,8 +1,9 @@
 import logging
+from fastapi import HTTPException
 from typing import Dict, List
 from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, CombinedSearchExtractResponse, CombinedSearchExtractRequest, CombinedResult
-from app.services.search_engine import SearchEngine
+from app.services.search_engine import SearchEngine, GoogleSearchError
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,19 @@ class ExtractController:
         offset = request.offset
         combined_results = []
 
-        raw = await self.search_engine.search_with_offset(
-            prompt=request.prompt,
-            user_id=session_user,
-            offset=offset,
-            num_results=required_count
-        )
+        try:
+            raw = await self.search_engine.search_with_offset(
+                prompt=request.prompt,
+                user_id=session_user,
+                offset=offset,
+                num_results=required_count
+            )
+        except GoogleSearchError as e:
+            logger.error(f"Google Search Error {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            logger.error(f"Search endpoint error: {e}")
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
         session = raw["session_info"]["session_id"]
         total_available = raw["pagination"]["total_results_available"]
@@ -40,7 +48,15 @@ class ExtractController:
 
         while collected < required_count:
             if result_index >= len(results):
-                more = await self.search_engine.get_more_results(session_id=session, num_results=10)
+                try:
+                    more = await self.search_engine.get_more_results(session_id=session, num_results=10)
+                except GoogleSearchError as e:
+                    logger.error(f"Google Search Error {str(e)}")
+                    raise HTTPException(status_code=500, detail=str(e))
+                except Exception as e:
+                    logger.error(f"Search endpoint error: {e}")
+                    raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
                 new_results = more["results"]
                 if not new_results:
                     break

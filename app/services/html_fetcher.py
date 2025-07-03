@@ -12,4 +12,4 @@ class HTMLFetcher:
             response.raise_for_status()
             return response.text
         except requests.RequestException:
-            return ""
+            raise

@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from app.services.search_engine import SearchEngine
+from app.services.search_engine import SearchEngine, GoogleSearchError
 from app.schemas import PromptSearchRequest, PaginatedSearchResponse, MoreResultsRequest
 
 class SearchController:
@@ -9,12 +9,17 @@ class SearchController:
     async def search_with_pagination(self, request: PromptSearchRequest) -> PaginatedSearchResponse:
         session_user = "default_user"
 
-        result = await self.search_engine.search_with_offset(
-            prompt=request.prompt,
-            user_id=session_user,
-            offset=request.offset,
-            num_results=request.num_results
-        )
+        try:
+            result = await self.search_engine.search_with_offset(
+                prompt=request.prompt,
+                user_id=session_user,
+                offset=request.offset,
+                num_results=request.num_results
+            )
+        except GoogleSearchError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
         return PaginatedSearchResponse(**result)
 
@@ -25,8 +30,7 @@ class SearchController:
                 num_results=request.num_results
             )
             return PaginatedSearchResponse(**result)
-
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+        except GoogleSearchError as e:
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=500, detail="Search service temporarily unavailable")
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

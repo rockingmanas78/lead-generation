@@ -11,7 +11,7 @@ class LLMParser:
 
     def extract_contact_info(self, content: str) -> Dict:
         prompt = f"""
-        Please extract contact information from the following text. 
+        Please extract contact information from the following text.
         Look for and extract:
         1. Email addresses
         2. Phone/telephone numbers
@@ -37,13 +37,7 @@ class LLMParser:
             response = self.chain.invoke(prompt)
             return json.loads(response)
         except Exception:
-            return {
-                "emails": [],
-                "phones": [],
-                "addresses": [],
-                "company_name": "",
-                "description": ""
-            }
+            raise
 
     def extract_missing_fields(self, content: str, missing_fields: List[str]) -> Dict:
         field_map = {
@@ -82,4 +76,4 @@ class LLMParser:
             response = self.chain.invoke(prompt)
             return json.loads(response)
         except Exception:
-            return {f: [] if f in ["emails", "phones", "addresses"] else "" for f in missing_fields}
+            raise

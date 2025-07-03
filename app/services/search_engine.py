@@ -53,7 +53,7 @@ class SearchEngine:
     async def prompt_to_queries(self, user_prompt: str) -> List[str]:
         prompt = ChatPromptTemplate.from_messages([
             ("system", """
-            You are a lead generation specialist. Generate 4-5 high-recall search queries to find contact information for the user.
+            You are a lead generation specialist. Generate 2 high-recall search queries to find contact information for the user.
 
             Requirements:
             1. Create diverse queries using different keyword combinations
@@ -108,12 +108,8 @@ class SearchEngine:
             return queries[:5]
 
         except Exception as e:
-            base_terms = user_prompt.lower()
-            return [
-                f"{base_terms} contact information",
-                f"{base_terms} email phone address",
-                f"{base_terms} contact details"
-            ]
+            logger.error(f"OpenAI API error in prompt_to_queries: {e}")
+            raise
 
     def generate_session_id(self, user_id: str, prompt: str) -> str:
         base = f"{user_id}_{prompt}_{datetime.now().date()}"
@@ -185,7 +181,7 @@ class SearchEngine:
             raise GoogleSearchError(f"Search service unavailable: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in Google search: {e}")
-            raise GoogleSearchError("Search service error")
+            raise GoogleSearchError(f"Search service error {e}")
 
     async def fetch_more_results(self, session: SearchSession, target_count: int):
         current_count = len(session.results)

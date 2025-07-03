@@ -29,4 +29,4 @@ class PersonaliseEmail:
             response = structured_llm.invoke(prompt)
             return response
         except Exception:
-            return PersonaliseEmailResponse(body="Could not generate the email")
+            raise
