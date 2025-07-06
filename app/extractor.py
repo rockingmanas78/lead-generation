@@ -1,8 +1,11 @@
+import logging
 from fastapi import HTTPException
 from app.services.html_fetcher import HTMLFetcher
 from app.services.footer_parser import FooterParser
 from app.services.llm_parser import LLMParser
 from app.utils import extract_clean_text, merge_data, find_empty_fields, clean_phone_numbers
+
+logger = logging.getLogger(__name__)
 
 class ContactExtractor:
     def __init__(self):
@@ -13,8 +16,9 @@ class ContactExtractor:
     def extract(self, url: str) -> dict:
         try:
             html = self.fetcher.fetch(url)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not fetch the URL: {str(e)}")
+        except:
+            logger.error(f"Could not fetch the URL: {url}")
+            raise
 
         if not html:
             return self.llm.extract_contact_info("")

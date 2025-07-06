@@ -15,7 +15,11 @@ class ExtractController:
     def extract_contacts_from_urls(self, urls: List[str]) -> Dict[str, ContactInfo]:
         results = {}
         for url in urls:
-            contact = self.extractor.extract(url)
+            try:
+                contact = self.extractor.extract(url)
+            except:
+                continue
+
             results[url] = ContactInfo(**contact)
         return results
 
@@ -65,7 +69,11 @@ class ExtractController:
             res = results[result_index]
             result_index += 1
 
-            contact = self.extractor.extract(res.link)
+            try:
+                contact = self.extractor.extract(res.link)
+            except:
+                continue
+
             if not contact or (not contact.get("emails") and not contact.get("phones")):
                 logger.info(f"No contact info found for {res.link} Skipping...")
                 continue
