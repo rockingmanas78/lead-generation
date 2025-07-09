@@ -8,7 +8,7 @@ class ColdEmailTemplateGenerator:
         self.llm = ChatOpenAI(model=OPENAI_MODEL)
         self.chain = self.llm | StrOutputParser()
 
-    def generate_cold_email_template(self, user_prompt: str) -> str:
+    async def generate_cold_email_template(self, user_prompt: str) -> str:
         prompt = f"""
         Generate a professional and engaging cold sales email template based on the user's business description and target audience. The email should be concise, personalized, and optimized for conversions. Include:
 
@@ -21,7 +21,7 @@ class ColdEmailTemplateGenerator:
         """
 
         try:
-            response = self.chain.invoke(prompt)
+            response = await self.chain.ainvoke(prompt)
             return response
         except Exception:
             raise

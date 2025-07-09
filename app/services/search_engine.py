@@ -105,6 +105,7 @@ class SearchEngine:
                     f"{base_terms} address contact details"
                 ]
 
+            print(f"searching these queries: {queries[:5]}")
             return queries[:5]
 
         except Exception as e:

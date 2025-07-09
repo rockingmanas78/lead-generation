@@ -1,6 +1,8 @@
+import asyncio
 import logging
 from fastapi import HTTPException
 from typing import Dict, List
+
 from app.extractor import ContactExtractor
 from app.schemas import ContactInfo, CombinedSearchExtractResponse, CombinedSearchExtractRequest, CombinedResult
 from app.services.search_engine import SearchEngine, GoogleSearchError
@@ -12,78 +14,98 @@ class ExtractController:
         self.extractor = ContactExtractor()
         self.search_engine = SearchEngine()
 
-    def extract_contacts_from_urls(self, urls: List[str]) -> Dict[str, ContactInfo]:
-        results = {}
-        for url in urls:
-            try:
-                contact = self.extractor.extract(url)
-            except:
-                continue
+    async def extract_contacts_from_urls(self, urls: List[str]) -> Dict[str, ContactInfo]:
+        try:
+            contact_results = await self.extractor.extract(urls)
+            filtered_results = {}
+            for url, contact in contact_results.items():
+                if contact and (contact.get("emails") or contact.get("phones")):
+                    try:
+                        filtered_results[url] = ContactInfo(**contact)
+                    except Exception as e:
+                        logger.warning(f"Error creating ContactInfo for {url}: {e}")
+                else:
+                    logger.info(f"No contact info found for {url}, skipping...")
 
-            results[url] = ContactInfo(**contact)
-        return results
+            return filtered_results
+
+        except Exception as e:
+            logger.error(f"Error in batch extraction: {e}")
+            raise HTTPException(status_code=500, detail=f"Error in batch extraction {e}")
 
     async def search_and_extract_contacts(self, request: CombinedSearchExtractRequest, user_id: str) -> CombinedSearchExtractResponse:
-        session_user = user_id
         required_count = request.num_results
-        collected = 0
         offset = request.offset
-        combined_results = []
+        collected = 0
+        result_index = 0
+        combined_results: List[CombinedResult] = []
 
         try:
             raw = await self.search_engine.search_with_offset(
                 prompt=request.prompt,
-                user_id=session_user,
+                user_id=user_id,
                 offset=offset,
                 num_results=required_count
             )
         except GoogleSearchError as e:
-            logger.error(f"Google Search Error {str(e)}")
+            logger.error(f"Google Search Error: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            logger.error(f"Search endpoint error: {e}")
-            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+            logger.error(f"Search error: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
         session = raw["session_info"]["session_id"]
-        total_available = raw["pagination"]["total_results_available"]
-
         results = raw["results"]
-        result_index = 0
 
         while collected < required_count:
             if result_index >= len(results):
                 try:
                     more = await self.search_engine.get_more_results(session_id=session, num_results=10)
+                    new_results = more.get("results", [])
+                    if not new_results:
+                        break
+                    results.extend(new_results)
                 except GoogleSearchError as e:
-                    logger.error(f"Google Search Error {str(e)}")
-                    raise HTTPException(status_code=500, detail=str(e))
-                except Exception as e:
-                    logger.error(f"Search endpoint error: {e}")
-                    raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-                new_results = more["results"]
-                if not new_results:
+                    logger.error(f"Google Search Error: {str(e)}")
                     break
-                results.extend(new_results)
+                except Exception as e:
+                    logger.error(f"Error fetching more results: {e}")
+                    break
 
-            res = results[result_index]
-            result_index += 1
+            remaining = required_count - collected
+            chunk = []
+            chunk_urls = []
+
+            while result_index < len(results) and len(chunk) < remaining:
+                res = results[result_index]
+                chunk.append(res)
+                chunk_urls.append(res.link)
+                result_index += 1
 
             try:
-                contact = self.extractor.extract(res.link)
-            except:
-                continue
+                contact_results = await self.extractor.extract(chunk_urls)
 
-            if not contact or (not contact.get("emails") and not contact.get("phones")):
-                logger.info(f"No contact info found for {res.link} Skipping...")
-                continue
-            combined_results.append(
-                CombinedResult(
-                    search_result=res,
-                    contact_info=ContactInfo(**contact)
-                )
-            )
-            collected += 1
+                for i, res in enumerate(chunk):
+                    url = chunk_urls[i]
+                    contact = contact_results.get(url)
+
+                    if contact and (contact.get("emails") or contact.get("phones")):
+                        try:
+                            combined_results.append(CombinedResult(
+                                search_result=res,
+                                contact_info=ContactInfo(**contact)
+                            ))
+                            collected += 1
+                            if collected >= required_count:
+                                break
+                        except Exception as e:
+                            logger.warning(f"Error creating result for {url}: {e}")
+                    else:
+                        logger.info(f"No contact info for {url}")
+
+            except Exception as e:
+                logger.error(f"Error in batch extraction for chunk: {e}")
+                raise HTTPException(status_code=500, detail=f"Error in batch extraction {e}")
 
         return CombinedSearchExtractResponse(
             results=combined_results,

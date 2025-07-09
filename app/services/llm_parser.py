@@ -9,7 +9,7 @@ class LLMParser:
         self.llm = ChatOpenAI(model=OPENAI_MODEL)
         self.chain = self.llm | StrOutputParser()
 
-    def extract_contact_info(self, content: str) -> Dict:
+    async def extract_contact_info(self, content: str) -> Dict:
         prompt = f"""
         Please extract contact information from the following text.
         Look for and extract:
@@ -34,12 +34,12 @@ class LLMParser:
         """
 
         try:
-            response = self.chain.invoke(prompt)
+            response = await self.chain.ainvoke(prompt)
             return json.loads(response)
         except Exception:
             raise
 
-    def extract_missing_fields(self, content: str, missing_fields: List[str]) -> Dict:
+    async def extract_missing_fields(self, content: str, missing_fields: List[str]) -> Dict:
         field_map = {
             "emails": "Email addresses",
             "phones": "Phone numbers",
@@ -73,7 +73,7 @@ class LLMParser:
         """
 
         try:
-            response = self.chain.invoke(prompt)
+            response = await self.chain.ainvoke(prompt)
             return json.loads(response)
         except Exception:
             raise

@@ -12,8 +12,8 @@ class URLListRequest(BaseModel):
     urls: list[str] = Field(..., description="List of URLs to extract contact information from")
 
 @router.post("", response_model=Dict[str, ContactInfo], dependencies=[Depends(JWTBearer())])
-def extract_from_urls(request: URLListRequest):
-    return extract_controller.extract_contacts_from_urls(request.urls)
+async def extract_from_urls(request: URLListRequest):
+    return await extract_controller.extract_contacts_from_urls(request.urls)
 
 @router.post("/search", response_model=CombinedSearchExtractResponse, dependencies=[Depends(JWTBearer())])
 async def search_and_extract(request: CombinedSearchExtractRequest, http_request: Request):

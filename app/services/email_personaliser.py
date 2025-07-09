@@ -7,7 +7,7 @@ class PersonaliseEmail:
     def __init__(self):
         self.llm = ChatOpenAI(model=OPENAI_MODEL)
 
-    def personalise_email(self, template: str, contact_info: ContactInfo) -> str:
+    async def personalise_email(self, template: str, contact_info: ContactInfo) -> str:
         prompt = f"""
         Take the email template and target company information.
 
@@ -26,7 +26,7 @@ class PersonaliseEmail:
 
         try:
             structured_llm = self.llm.with_structured_output(PersonaliseEmailResponse, method="function_calling")
-            response = structured_llm.invoke(prompt)
+            response = await structured_llm.ainvoke(prompt)
             return response
         except Exception:
             raise

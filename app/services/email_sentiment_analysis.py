@@ -8,7 +8,7 @@ class EmailSentimentAnalysis:
         self.llm = ChatOpenAI(model=OPENAI_MODEL)
         self.chain = self.llm | StrOutputParser()
 
-    def analyse_sentiment(self, subject: str, body: str) -> str:
+    async def analyse_sentiment(self, subject: str, body: str) -> str:
         prompt = f"""
         You are a helpful assistant for a sales agent. Your task is to analyze the subject and body of an email reply from a lead, and classify the email into one of the following four categories based on their intent and urgency:
 
@@ -27,7 +27,7 @@ class EmailSentimentAnalysis:
         """
 
         try:
-            response = self.chain.invoke(prompt)
+            response = await self.chain.ainvoke(prompt)
             return response
         except Exception:
             raise

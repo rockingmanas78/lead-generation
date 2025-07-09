@@ -18,14 +18,14 @@ class EmailController:
         self.email_personaliser = PersonaliseEmail()
 
     async def analyse_email_sentiment(self, request: EmailSentimentAnalysisRequest) -> EmailSentimentAnalysisResponse:
-        sentiment = self.sentiment_analyser.analyse_sentiment(request.subject, request.body)
+        sentiment = await self.sentiment_analyser.analyse_sentiment(request.subject, request.body)
         try:
             return EmailSentimentAnalysisResponse(sentiment=sentiment)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Could not analyse email sentiment: {str(e)}")
 
     async def generate_email_template(self, request: ColdEmailTemplateRequest) -> ColdEmailTemplateResponse:
-        template = self.cold_email_template_generator.generate_cold_email_template(request.user_prompt)
+        template = await self.cold_email_template_generator.generate_cold_email_template(request.user_prompt)
         try:
             return ColdEmailTemplateResponse(template=template)
         except Exception as e:
@@ -33,7 +33,7 @@ class EmailController:
 
     async def personalise_email(self, request: PersonaliseEmailRequest) -> PersonaliseEmailResponse:
         try:
-            return self.email_personaliser.personalise_email(
+            return await self.email_personaliser.personalise_email(
                 request.template,
                 request.company_contact_info
             )
