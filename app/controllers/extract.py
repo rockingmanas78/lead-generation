@@ -83,7 +83,7 @@ class ExtractController:
                 result_index += 1
 
             try:
-                contact_results = await self.extractor.extract(chunk_urls)
+                contact_results = await self.extractor.extract(chunk_urls, user_id)
 
                 for i, res in enumerate(chunk):
                     url = chunk_urls[i]
