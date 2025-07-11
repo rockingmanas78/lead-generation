@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-py"
-  binaryTargets = ["native"]
 }
 
 datasource db {
