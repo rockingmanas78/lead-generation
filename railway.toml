@@ -1,0 +1,11 @@
+[build]
+builder      = "nixpacks"
+buildCommand = "pip install ."
+
+[deploy]
+# 1) generate your Prisma client, 2) deploy migrations
+preDeployCommand = [
+  "prisma generate",
+  "prisma migrate deploy"
+]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
