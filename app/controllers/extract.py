@@ -1,20 +1,32 @@
+import uuid
+from prisma import Prisma
+from datetime import datetime
 import asyncio
 import logging
 from fastapi import HTTPException
 from typing import Dict, List
 
 from app.extractor import ContactExtractor
-from app.schemas import ContactInfo, CombinedSearchExtractResponse, CombinedSearchExtractRequest, CombinedResult
+from app.schemas import (
+    ContactInfo,
+    ExtractSearchResponse,
+    JobStatusRequest,
+    JobStatusResponse,
+    CombinedSearchExtractRequest,
+)
 from app.services.search_engine import SearchEngine, GoogleSearchError
 
 logger = logging.getLogger(__name__)
+
 
 class ExtractController:
     def __init__(self):
         self.extractor = ContactExtractor()
         self.search_engine = SearchEngine()
 
-    async def extract_contacts_from_urls(self, urls: List[str]) -> Dict[str, ContactInfo]:
+    async def extract_contacts_from_urls(
+        self, urls: List[str]
+    ) -> Dict[str, ContactInfo]:
         try:
             contact_results = await self.extractor.extract(urls)
             filtered_results = {}
@@ -31,91 +43,130 @@ class ExtractController:
 
         except Exception as e:
             logger.error(f"Error in batch extraction: {e}")
-            raise HTTPException(status_code=500, detail=f"Error in batch extraction {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error in batch extraction {e}"
+            )
 
-    async def search_and_extract_contacts(self, request: CombinedSearchExtractRequest, user_id: str) -> CombinedSearchExtractResponse:
-        required_count = request.num_results
-        offset = request.offset
+    async def search_and_extract_contacts(
+        self, request: CombinedSearchExtractRequest, user_id: str
+    ) -> ExtractSearchResponse:
+        job_id = str(uuid.uuid4())
+
+        # Immediately insert job in DB
+        db = Prisma()
+        await db.connect()
+        await db.leadgenerationjob.create(
+            {
+                "id": job_id,
+                "tenantId": user_id,
+                "status": "PROCESSING",
+                "totalRequested": request.num_results,
+            }
+        )
+        await db.disconnect()
+
+        # Start background task
+        asyncio.create_task(self._run_extraction_job(request, user_id, job_id))
+
+        return ExtractSearchResponse(job_id=job_id, message="Started processing job")
+
+    async def _run_extraction_job(
+        self, request: CombinedSearchExtractRequest, user_id: str, job_id: str
+    ):
+        db = Prisma()
+        await db.connect()
         collected = 0
         result_index = 0
-        combined_results: List[CombinedResult] = []
+        offset = request.offset
+        required_count = request.num_results
+        current_generated_count = 0
 
         try:
             raw = await self.search_engine.search_with_offset(
                 prompt=request.prompt,
                 user_id=user_id,
                 offset=offset,
-                num_results=required_count
+                num_results=required_count,
             )
-        except GoogleSearchError as e:
-            logger.error(f"Google Search Error: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
 
-        session = raw["session_info"]["session_id"]
-        results = raw["results"]
+            session = raw["session_info"]["session_id"]
+            results = raw["results"]
 
-        while collected < required_count:
-            if result_index >= len(results):
-                try:
-                    more = await self.search_engine.get_more_results(session_id=session, num_results=10)
+            while collected < required_count:
+                if result_index >= len(results):
+                    more = await self.search_engine.get_more_results(
+                        session_id=session, num_results=10
+                    )
                     new_results = more.get("results", [])
                     if not new_results:
                         break
                     results.extend(new_results)
-                except GoogleSearchError as e:
-                    logger.error(f"Google Search Error: {str(e)}")
-                    break
-                except Exception as e:
-                    logger.error(f"Error fetching more results: {e}")
-                    break
 
-            remaining = required_count - collected
-            chunk = []
-            chunk_urls = []
+                remaining = required_count - collected
+                chunk = []
+                chunk_urls = []
 
-            while result_index < len(results) and len(chunk) < remaining:
-                res = results[result_index]
-                chunk.append(res)
-                chunk_urls.append(res.link)
-                result_index += 1
+                while result_index < len(results) and len(chunk) < remaining:
+                    res = results[result_index]
+                    chunk.append(res)
+                    chunk_urls.append(res.link)
+                    result_index += 1
 
-            try:
-                contact_results = await self.extractor.extract(chunk_urls, user_id)
+                contact_results = await self.extractor.extract(
+                    chunk_urls, user_id, job_id, current_generated_count
+                )
 
                 for i, res in enumerate(chunk):
                     url = chunk_urls[i]
                     contact = contact_results.get(url)
-
                     if contact and (contact.get("emails") or contact.get("phones")):
                         try:
-                            combined_results.append(CombinedResult(
-                                search_result=res,
-                                contact_info=ContactInfo(**contact)
-                            ))
+                            # Save result to DB via process_urls_batch already
                             collected += 1
-                            if collected >= required_count:
-                                break
+                            current_generated_count += 1
                         except Exception as e:
-                            logger.warning(f"Error creating result for {url}: {e}")
+                            logger.warning(f"Skipping bad contact info for {url}: {e}")
                     else:
                         logger.info(f"No contact info for {url}")
 
-            except Exception as e:
-                logger.error(f"Error in batch extraction for chunk: {e}")
-                raise HTTPException(status_code=500, detail=f"Error in batch extraction {e}")
+            await db.leadgenerationjob.update(
+                where={"id": job_id},
+                data={"status": "COMPLETED", "completedAt": datetime.utcnow()},
+            )
 
-        return CombinedSearchExtractResponse(
-            results=combined_results,
-            pagination={
-                "offset": offset,
-                "results_returned": len(combined_results),
-                "total_results_available": len(results),
-                "has_more": result_index < len(results),
-                "next_offset": offset + len(combined_results)
-            },
-            session_info=raw["session_info"],
-            query_info=raw["query_info"]
-        )
+        except Exception as e:
+            logger.error(f"Job {job_id} failed: {e}")
+            await db.leadgenerationjob.update(
+                where={"id": job_id},
+                data={"status": "FAILED"},
+            )
+
+        finally:
+            await db.disconnect()
+
+    async def get_job_update(
+        self, request: JobStatusRequest, user_id: str
+    ) -> JobStatusResponse:
+        db = Prisma()
+        await db.connect()
+
+        try:
+            job = await db.leadgenerationjob.find_unique(where={"id": request.job_id})
+            print(f"gen count: {job.generatedCount}")
+
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+
+            if job.tenantId != user_id:
+                raise HTTPException(
+                    status_code=403, detail="Unauthorized access to this job"
+                )
+
+            return JobStatusResponse(
+                job_id=job.id,
+                total_requested=job.totalRequested,
+                generated_count=job.generatedCount,
+            )
+
+        finally:
+            await db.disconnect()

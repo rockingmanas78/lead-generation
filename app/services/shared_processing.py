@@ -5,16 +5,19 @@ from typing import List, Dict, Optional
 from app.services.html_fetcher import HTMLFetcher
 from app.services.footer_parser import FooterParser
 from app.services.llm_parser import LLMParser
-from app.utils import extract_clean_text, merge_data, find_empty_fields, clean_phone_numbers
+from app.utils import (
+    extract_clean_text,
+    merge_data,
+    find_empty_fields,
+    clean_phone_numbers,
+)
 
 logger = logging.getLogger(__name__)
-BATCH_SIZE = 5
+BATCH_SIZE = 3
+
 
 async def process_urls_batch(
-    urls: List[str],
-    tenant_id: str,
-    job_id: str,
-    current_generated_count: int = 0
+    urls: List[str], tenant_id: str, job_id: str, current_generated_count: int = 0
 ) -> Dict[str, Optional[dict]]:
     db = Prisma()
     await db.connect()
@@ -25,11 +28,13 @@ async def process_urls_batch(
         llm = LLMParser()
 
         batch_size = min(len(urls), BATCH_SIZE)
+        if batch_size == 0:
+            batch_size = 1
         results = {}
         generated_count = current_generated_count
 
         for i in range(0, len(urls), batch_size):
-            batch = urls[i:i + batch_size]
+            batch = urls[i : i + batch_size]
 
             try:
                 html_results = await fetcher.fetch(batch)
@@ -90,13 +95,17 @@ async def process_urls_batch(
                     contact_text = extract_clean_text(contact_page_html)
 
                     try:
-                        partial_info = await llm.extract_missing_fields(contact_text, missing_fields)
+                        partial_info = await llm.extract_missing_fields(
+                            contact_text, missing_fields
+                        )
                         contact_info = merge_data(contact_info, partial_info)
 
                         if contact_info.get("emails"):
                             contact_info["emails"] = list(set(contact_info["emails"]))
                         if contact_info.get("phones"):
-                            contact_info["phones"] = clean_phone_numbers(contact_info["phones"])
+                            contact_info["phones"] = clean_phone_numbers(
+                                contact_info["phones"]
+                            )
 
                         results[main_url] = contact_info
 
@@ -115,10 +124,7 @@ async def process_urls_batch(
                     addresses = contact.get("addresses") or [""]
 
                     existing_lead = await db.lead.find_first(
-                        where={
-                            "tenantId": tenant_id,
-                            "companyName": company_name
-                        }
+                        where={"tenantId": tenant_id, "companyName": company_name}
                     )
 
                     if not existing_lead:
@@ -137,9 +143,9 @@ async def process_urls_batch(
                     logger.error(f"Failed to insert lead for {url}: {e}")
 
             await db.leadgenerationjob.update(
-                where={"id": job_id},
-                data={"generatedCount": generated_count}
+                where={"id": job_id}, data={"generatedCount": generated_count}
             )
+            print(f"generated {generated_count} leads")
 
         return results
 

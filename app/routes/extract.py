@@ -3,24 +3,60 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, Field
 from app.auth.auth_bearer import JWTBearer
 from app.controllers.extract import ExtractController
-from app.schemas import ContactInfo, CombinedSearchExtractResponse, CombinedSearchExtractRequest
+from app.schemas import (
+    ContactInfo,
+    ExtractSearchResponse,
+    JobStatusRequest,
+    JobStatusResponse,
+    CombinedSearchExtractRequest,
+)
 
 router = APIRouter(prefix="/extract", tags=["extract"])
 extract_controller = ExtractController()
 
-class URLListRequest(BaseModel):
-    urls: list[str] = Field(..., description="List of URLs to extract contact information from")
 
-@router.post("", response_model=Dict[str, ContactInfo], dependencies=[Depends(JWTBearer())])
+class URLListRequest(BaseModel):
+    urls: list[str] = Field(
+        ..., description="List of URLs to extract contact information from"
+    )
+
+
+@router.post(
+    "", response_model=Dict[str, ContactInfo], dependencies=[Depends(JWTBearer())]
+)
 async def extract_from_urls(request: URLListRequest):
     return await extract_controller.extract_contacts_from_urls(request.urls)
 
-@router.post("/search", response_model=CombinedSearchExtractResponse, dependencies=[Depends(JWTBearer())])
-async def search_and_extract(request: CombinedSearchExtractRequest, http_request: Request):
+
+@router.post(
+    "/search",
+    response_model=ExtractSearchResponse,
+    dependencies=[Depends(JWTBearer())],
+)
+async def search_and_extract(
+    request: CombinedSearchExtractRequest, http_request: Request
+):
     token = await JWTBearer()(http_request)
     from app.config import JWT_SECRET, JWT_ALGORITHM
     import jwt
+
     payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    user_id = payload.get("id")
+    user_id = payload.get("tenantId")
 
     return await extract_controller.search_and_extract_contacts(request, user_id)
+
+
+@router.get(
+    "/get_job_update",
+    response_model=JobStatusResponse,
+    dependencies=[Depends(JWTBearer())],
+)
+async def search_and_extract(request: JobStatusRequest, http_request: Request):
+    token = await JWTBearer()(http_request)
+    from app.config import JWT_SECRET, JWT_ALGORITHM
+    import jwt
+
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    user_id = payload.get("tenantId")
+
+    return await extract_controller.get_job_update(request, user_id)
