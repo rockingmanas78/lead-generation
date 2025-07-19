@@ -56,6 +56,18 @@ async def process_urls_batch(
                     contact_info = await llm.extract_contact_info(footer_text)
                     results[url] = contact_info
 
+                    # 👉  if we already have an email or phone, save *right now*
+                    if contact_info and (contact_info.get("emails") or contact_info.get("phones")):
+                        print(contact_info)
+                        created = await upsert_lead(db, tenant_id, contact_info)
+                        # if created:
+                        #    generated_count += 1
+                        #    # keep job progress in sync in real‑time
+                        #    await db.leadgenerationjob.update(
+                        #        where={"id": job_id},
+                        #        data={"generatedCount": generated_count},
+                        #    )
+
                     missing_fields = find_empty_fields(contact_info)
                     if missing_fields:
                         contact_links = parser.find_contact_links(html, url)
@@ -99,6 +111,18 @@ async def process_urls_batch(
                             contact_text, missing_fields
                         )
                         contact_info = merge_data(contact_info, partial_info)
+
+                        print("Merge data")
+                        print(contact_info)
+
+                        if (contact_info.get("emails") or contact_info.get("phones")):
+                            created = await upsert_lead(db, tenant_id, contact_info)
+                            # if created:
+                            #     generated_count += 1
+                            #     await db.leadgenerationjob.update(
+                            #         where={"id": job_id},
+                            #         data={"generatedCount": generated_count},
+                            #     )
 
                         if contact_info.get("emails"):
                             contact_info["emails"] = list(set(contact_info["emails"]))
@@ -151,3 +175,45 @@ async def process_urls_batch(
 
     finally:
         await db.disconnect()
+
+
+async def upsert_lead(
+    db: Prisma,
+    tenant_id: str,
+    info: dict,
+) -> bool:
+    """
+    Insert the lead if it doesn’t exist; otherwise enrich / merge it.
+    Returns True if a *new* record was created (so we can bump generatedCount).
+    """
+    company_name = info.get("company_name") or info.get("url") or "Unknown"
+    emails   = info.get("emails") or [""]
+    phones   = info.get("phones") or [""]
+    addresses = info.get("addresses") or [""]
+
+    existing = await db.lead.find_first(
+        where={"tenantId": tenant_id, "companyName": company_name}
+    )
+
+    if existing:
+        # merge, keeping unique values; expand later if you want smarter merging
+        await db.lead.update(
+            where={"id": existing.id},
+            data={
+                "contactEmail": list(set(existing.contactEmail + emails)),
+                "contactPhone": list(set(existing.contactPhone + phones)),
+                "contactAddress": list(set(existing.contactAddress + addresses)),
+            },
+        )
+        return False
+
+    await db.lead.create(
+        data={
+            "tenantId": tenant_id,
+            "companyName": company_name,
+            "contactEmail": emails,
+            "contactPhone": phones,
+            "contactAddress": addresses,
+        }
+    )
+    return True
