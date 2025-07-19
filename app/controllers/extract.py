@@ -10,7 +10,6 @@ from app.extractor import ContactExtractor
 from app.schemas import (
     ContactInfo,
     ExtractSearchResponse,
-    JobStatusRequest,
     JobStatusResponse,
     CombinedSearchExtractRequest,
 )
@@ -144,14 +143,12 @@ class ExtractController:
         finally:
             await db.disconnect()
 
-    async def get_job_update(
-        self, request: JobStatusRequest, user_id: str
-    ) -> JobStatusResponse:
+    async def get_job_update(self, job_id: str, user_id: str) -> JobStatusResponse:
         db = Prisma()
         await db.connect()
 
         try:
-            job = await db.leadgenerationjob.find_unique(where={"id": request.job_id})
+            job = await db.leadgenerationjob.find_unique(where={"id": job_id})
             print(f"gen count: {job.generatedCount}")
 
             if not job:

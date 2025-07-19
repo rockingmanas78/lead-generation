@@ -51,7 +51,7 @@ async def search_and_extract(
     response_model=JobStatusResponse,
     dependencies=[Depends(JWTBearer())],
 )
-async def search_and_extract(request: JobStatusRequest, http_request: Request):
+async def search_and_extract(job_id: str, http_request: Request):
     token = await JWTBearer()(http_request)
     from app.config import JWT_SECRET, JWT_ALGORITHM
     import jwt
@@ -59,4 +59,4 @@ async def search_and_extract(request: JobStatusRequest, http_request: Request):
     payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     user_id = payload.get("tenantId")
 
-    return await extract_controller.get_job_update(request, user_id)
+    return await extract_controller.get_job_update(job_id, user_id)

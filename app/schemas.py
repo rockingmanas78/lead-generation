@@ -59,10 +59,6 @@ class ExtractSearchResponse(BaseModel):
     message: str
 
 
-class JobStatusRequest(BaseModel):
-    job_id: str
-
-
 class JobStatusResponse(BaseModel):
     job_id: str
     total_requested: int
