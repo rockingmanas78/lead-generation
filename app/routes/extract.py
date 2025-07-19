@@ -6,7 +6,6 @@ from app.controllers.extract import ExtractController
 from app.schemas import (
     ContactInfo,
     ExtractSearchResponse,
-    JobStatusRequest,
     JobStatusResponse,
     CombinedSearchExtractRequest,
 )
