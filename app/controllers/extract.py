@@ -13,6 +13,7 @@ from app.schemas import (
     JobStatusResponse,
     CombinedSearchExtractRequest,
 )
+from app.services.database import db
 from app.services.search_engine import SearchEngine, GoogleSearchError
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class ExtractController:
     def __init__(self):
         self.extractor = ContactExtractor()
         self.search_engine = SearchEngine()
+        self.db = db
 
     async def extract_contacts_from_urls(
         self, urls: List[str]
@@ -51,10 +53,7 @@ class ExtractController:
     ) -> ExtractSearchResponse:
         job_id = str(uuid.uuid4())
 
-        # Immediately insert job in DB
-        db = Prisma()
-        await db.connect()
-        await db.leadgenerationjob.create(
+        await self.db.leadgenerationjob.create(
             {
                 "id": job_id,
                 "tenantId": user_id,
@@ -62,7 +61,6 @@ class ExtractController:
                 "totalRequested": request.num_results,
             }
         )
-        await db.disconnect()
 
         # Start background task
         asyncio.create_task(self._run_extraction_job(request, user_id, job_id))
@@ -72,8 +70,6 @@ class ExtractController:
     async def _run_extraction_job(
         self, request: CombinedSearchExtractRequest, user_id: str, job_id: str
     ):
-        db = Prisma()
-        await db.connect()
         collected = 0
         result_index = 0
         offset = request.offset
@@ -128,28 +124,21 @@ class ExtractController:
                     else:
                         logger.info(f"No contact info for {url}")
 
-            await db.leadgenerationjob.update(
+            await self.db.leadgenerationjob.update(
                 where={"id": job_id},
                 data={"status": "COMPLETED", "completedAt": datetime.utcnow()},
             )
 
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}")
-            await db.leadgenerationjob.update(
+            await self.db.leadgenerationjob.update(
                 where={"id": job_id},
                 data={"status": "FAILED"},
             )
 
-        finally:
-            await db.disconnect()
-
     async def get_job_update(self, job_id: str, user_id: str) -> JobStatusResponse:
-        db = Prisma()
-        await db.connect()
-
         try:
-            job = await db.leadgenerationjob.find_unique(where={"id": job_id})
-            print(f"gen count: {job.generatedCount}")
+            job = await self.db.leadgenerationjob.find_unique(where={"id": job_id})
 
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
@@ -165,5 +154,6 @@ class ExtractController:
                 generated_count=job.generatedCount,
             )
 
-        finally:
-            await db.disconnect()
+        except Exception as e:
+            logger.error(f"get_job_update function failed: {e}")
+            raise

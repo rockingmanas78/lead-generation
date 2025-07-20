@@ -5,16 +5,19 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
+from app.services.database import db
 from app.services.shared_processing import process_urls_batch
 
 logger = logging.getLogger(__name__)
 
+
 async def process():
-    db = Prisma()
     await db.connect()
 
     try:
-        processing_jobs = await db.leadgenerationjob.find_many(where={"status": "PROCESSING"})
+        processing_jobs = await db.leadgenerationjob.find_many(
+            where={"status": "PROCESSING"}
+        )
 
         for job in processing_jobs:
             job_id = job.id
@@ -27,17 +30,14 @@ async def process():
 
             await db.leadgenerationjob.update(
                 where={"id": job_id},
-                data={
-                    "status": "COMPLETED",
-                    "completedAt": datetime.utcnow()
-                }
+                data={"status": "COMPLETED", "completedAt": datetime.utcnow()},
             )
-
-    finally:
-        await db.disconnect()
+    except Exception as e:
+        logger.error(f"lifespan function failed: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await process()
     yield
+    await db.disconnect()
