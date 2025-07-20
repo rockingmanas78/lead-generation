@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 from app.services.html_fetcher import HTMLFetcher
 from app.services.footer_parser import FooterParser
 from app.services.llm_parser import LLMParser
+from app.services.database import db
 from app.utils import (
     extract_clean_text,
     merge_data,
@@ -19,9 +20,6 @@ BATCH_SIZE = 3
 async def process_urls_batch(
     urls: List[str], tenant_id: str, job_id: str, current_generated_count: int = 0
 ) -> Dict[str, Optional[dict]]:
-    db = Prisma()
-    await db.connect()
-
     try:
         fetcher = HTMLFetcher()
         parser = FooterParser()
@@ -149,5 +147,6 @@ async def process_urls_batch(
 
         return results
 
-    finally:
-        await db.disconnect()
+    except Exception as e:
+        logger.error(f"process_url_batch function failed: {e}")
+        return {}
