@@ -1,3 +1,4 @@
+from enum import Enum
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
@@ -52,6 +53,33 @@ class CombinedSearchExtractResponse(BaseModel):
     pagination: Dict[str, Any]
     query_info: Dict[str, Any]
     session_info: Dict[str, Any]
+
+
+class IngestionSourcesEnum(str, Enum):
+    bulk_snippets = "bulk_snippets"
+    company_profile = "company_profile"
+    company_qa = "company_qa"
+    knowledge_documents = "knowledge_documents"
+    products = "products"
+    product_qa = "product_qa"
+    website_content = "website_content"
+
+
+class IngestionRequest(BaseModel):
+    sources: list[IngestionSourcesEnum] | None
+
+
+class IngestionResponse(BaseModel):
+    message: str
+
+
+class RAGRequest(BaseModel):
+    question: str
+    sources: list[IngestionSourcesEnum] | None
+
+
+class RAGResponse(BaseModel):
+    answer: str
 
 
 class ExtractSearchResponse(BaseModel):
