@@ -120,3 +120,11 @@ class PersonaliseEmailResponse(BaseModel):
 
     subject: str = Field(description="The subject line of the email")
     email_body: str = Field(description="The body of the email")
+
+
+class GetCompanySizeRequest(BaseModel):
+    company_names: list[str]
+
+
+class GetCompanySizeResponse(BaseModel):
+    response: str

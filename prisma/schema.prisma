@@ -68,10 +68,12 @@ model Tenant {
   campaigns          EmailCampaign[]
   emailLogs          EmailLog[]
   templates          EmailTemplate[]
+  Feedback           Feedback[]
   KnowledgeDocument  KnowledgeDocument[]
   leads              Lead[]
   jobs               LeadGenerationJob[]
   PaymentTransaction PaymentTransaction[]
+  TenantOnboarding   TenantOnboarding?
   users              User[]
   WebsiteContent     WebsiteContent[]
 }
@@ -144,6 +146,8 @@ model Lead {
   deletedAt         DateTime?
   contactAddress    String[]
   source            lead_source        @default(AI_GENERATED)
+  linkedInUrl       String?            @unique
+  companySize       Int?               @default(0)
   bulkEmailJobLeads BulkEmailJobLead[]
   campaignLeads     CampaignLead[]
   emailLogs         EmailLog[]
@@ -300,19 +304,21 @@ model BulkSnippet {
 }
 
 model CompanyProfile {
-  id            String      @id(map: "company_profile_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id     String      @unique(map: "company_profile_tenant_id_key")
-  description   String?
-  mission       String?
-  values        String?
-  usp           String?
-  history       String?
-  key_personnel String?
-  created_at    DateTime    @default(now()) @db.Timestamptz(6)
-  updated_at    DateTime    @default(now()) @db.Timestamptz(6)
-  Tenant        Tenant      @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_profile_tenant_id_fkey")
-  CompanyQA     CompanyQA[]
-  Product       Product[]
+  id                   String      @id(map: "company_profile_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id            String      @unique(map: "company_profile_tenant_id_key")
+  description          String?
+  mission              String?
+  values               String?
+  usp                  String?
+  history              String?
+  key_personnel        String?
+  created_at           DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime    @default(now()) @db.Timestamptz(6)
+  offering_description String?
+  target_market        String?
+  Tenant               Tenant      @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "company_profile_tenant_id_fkey")
+  CompanyQA            CompanyQA[]
+  Product              Product[]
 }
 
 model CompanyQA {
@@ -405,6 +411,42 @@ model TenantRAG {
   @@unique([tenant_id, source, sourceId], map: "tenantrag_unique_tenant_source_sourceid")
   @@index([embedding])
   @@index([tenant_id], map: "idx_tenant_rag_tenant_id")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model Feedback {
+  id         String           @id @default(dbgenerated("(gen_random_uuid())::text"))
+  tenant_id  String
+  name       String
+  email      String?
+  category   FeedbackCategory @default(GENERAL_COMMENT)
+  rating     Int?
+  page       String?
+  message    String
+  created_at DateTime         @default(now()) @db.Timestamptz(6)
+  Tenant     Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_feedback_tenant")
+
+  @@index([tenant_id, category], map: "idx_feedback_tenant_category")
+  @@index([tenant_id, created_at], map: "idx_feedback_tenant_created_at")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model TenantOnboarding {
+  tenant_id     String             @id
+  role          OnboardingRole
+  hear_about_us AcquisitionChannel
+  primary_goal  SalesGoal
+  createdat     DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime           @default(now()) @db.Timestamptz(6)
+  Tenant        Tenant             @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model WaitListMembers {
+  id              String   @id(map: "wait_list_members_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  email           String   @unique(map: "wait_list_members_email_key")
+  whatsapp_number String
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
 }
 
 enum PlanType {
@@ -510,4 +552,37 @@ enum lead_source {
   AI_GENERATED
   CSV_UPLOAD
   MANUAL_ENTRY
+}
+
+enum AcquisitionChannel {
+  GOOGLE_SEARCH
+  SOCIAL_MEDIA
+  REFERRAL
+  ADVERTISEMENT
+  BLOG
+  OTHER
+}
+
+enum FeedbackCategory {
+  BUG_REPORT
+  FEATURE_REQUEST
+  GENERAL_COMMENT
+  TESTIMONIAL
+  OTHER
+}
+
+enum OnboardingRole {
+  FOUNDER_CEO
+  SALES_MANAGER
+  MARKETING_MANAGER
+  BUSINESS_DEV
+  OTHER
+}
+
+enum SalesGoal {
+  INCREASE_LEADS
+  IMPROVE_CONVERSION
+  AUTOMATE_PROCESS
+  BETTER_TRACKING
+  TEAM_COLLABORATION
 }
