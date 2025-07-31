@@ -128,3 +128,11 @@ class GetCompanySizeRequest(BaseModel):
 
 class GetCompanySizeResponse(BaseModel):
     response: str
+
+
+class SpamRequest(BaseModel):
+    email_body: str
+
+
+class SpamResponse(BaseModel):
+    score: int
