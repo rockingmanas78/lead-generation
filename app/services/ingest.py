@@ -245,7 +245,7 @@ class Ingest:
     async def process_product_qa(self, tenant_id: str) -> int:
         profiles = await self.db.companyprofile.find_many(
             where={"tenant_id": tenant_id},
-            include={"Product": {"select": {"id": True}}},
+            include={"Product": True},
         )
 
         if not profiles:

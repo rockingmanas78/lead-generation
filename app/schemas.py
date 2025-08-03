@@ -60,7 +60,7 @@ class IngestionSourcesEnum(str, Enum):
     company_profile = "company_profile"
     company_qa = "company_qa"
     knowledge_documents = "knowledge_documents"
-    products = "products"
+    product = "product"
     product_qa = "product_qa"
     website_content = "website_content"
 

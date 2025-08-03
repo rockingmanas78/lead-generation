@@ -56,7 +56,7 @@ class MultiTenantRAG:
                     context = await self.retrieve_knowledge_documents(
                         tenant_id, source_id, index
                     )
-                elif chunk["source"] == "products":
+                elif chunk["source"] == "product":
                     context = await self.retrieve_products(source_id, index)
                 elif chunk["source"] == "product_qa":
                     context = await self.retrieve_product_qa(source_id, index)
@@ -67,6 +67,7 @@ class MultiTenantRAG:
 
                 final_context = final_context + "\n\n" + context
 
+            print(f"The final context retrieved is\n{final_context}")
             return final_context
         except Exception as e:
             logger.error(f"cannot get similar chunks: {e}")
@@ -217,7 +218,7 @@ class MultiTenantRAG:
 
     async def retrieve_product_qa(self, source_id: str, index: int) -> str:
         qa = await self.db.productqa.find_unique(
-            where={"id": source_id}, include={"Product": {"select": {"id": True}}}
+            where={"id": source_id}, include={"Product": True}
         )
 
         if not qa:
