@@ -33,6 +33,7 @@ class MultiTenantRAG:
         self, question: str, tenant_id: str, sources: list[IngestionSourcesEnum] | None
     ) -> str:
         final_context = ""
+        contexts: list[str] = []
         try:
             similar_chunks = await self._get_similar_chunks(
                 question, tenant_id, sources
@@ -65,8 +66,9 @@ class MultiTenantRAG:
                         tenant_id, source_id, index
                     )
 
-                final_context = final_context + "\n\n" + context
+                contexts.append(context)
 
+            final_context = "\n\n".join(contexts)
             print(f"The final context retrieved is\n{final_context}")
             return final_context
         except Exception as e:
@@ -312,31 +314,47 @@ class MultiTenantRAG:
     ) -> list[dict[str, str]]:
         try:
             question_embedding = await self._generate_embedding(question)
-
             base_query = """
             SELECT source, "sourceId"
             FROM "TenantRAG"
             WHERE tenant_id = $1
             """
-
-            params = [tenant_id, question_embedding]
+            params = [tenant_id]
 
             if sources:
                 source_placeholders = ", ".join(
-                    f"${i + 3}" for i in range(len(sources))
+                    f"${i + 2}" for i in range(len(sources))
                 )
                 base_query += f" AND source IN ({source_placeholders})"
                 params.extend([source.value for source in sources])
-
-            final_query = (
-                base_query
-                + """
-                ORDER BY embedding <=> $2::vector
-                LIMIT 5;
+            else:
+                available_sources_query = """
+                SELECT DISTINCT source
+                FROM "TenantRAG"
+                WHERE tenant_id = $1
                 """
-            )
+                available_result = await db.query_raw(
+                    available_sources_query, tenant_id
+                )
+                available_sources = [row["source"] for row in available_result]
 
-            result = await db.query_raw(final_query, *params)
+                if available_sources:
+                    source_placeholders = ", ".join(
+                        f"${i + 2}" for i in range(len(available_sources))
+                    )
+                    base_query += f" AND source IN ({source_placeholders})"
+                    params.extend(available_sources)
+                else:
+                    return []
+
+            embedding_param_index = len(params) + 1
+            base_query += f"""
+            ORDER BY embedding <=> ${embedding_param_index}::vector
+            LIMIT 5;
+            """
+            params.append(question_embedding)
+
+            result = await db.query_raw(base_query, *params)
             return result
 
         except Exception as e:
