@@ -136,3 +136,16 @@ class SpamRequest(BaseModel):
 
 class SpamResponse(BaseModel):
     score: int
+
+
+class GeneratedEmailResponse(BaseModel):
+    response: str
+
+
+class GeneratedEmailRequest(BaseModel):
+    campaign_id: str
+    latest_email: str
+    sender_name: str
+    sender_email: str
+    recipient_emails: list[str]
+    lead_id: str
