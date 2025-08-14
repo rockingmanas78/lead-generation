@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
@@ -85,12 +86,19 @@ class RAGResponse(BaseModel):
 class ExtractSearchResponse(BaseModel):
     job_id: str
     message: str
+    job_started_at: datetime
 
 
 class JobStatusResponse(BaseModel):
     job_id: str
     total_requested: int
     generated_count: int
+
+
+class CombinedJobStatusContactInfoResponse(BaseModel):
+    job_status_response: JobStatusResponse
+    contact_infos: list[ContactInfo]
+    retrieved_at: datetime
 
 
 class EmailSentimentAnalysisRequest(BaseModel):

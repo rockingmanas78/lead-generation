@@ -129,6 +129,7 @@ async def process_urls_batch(
                         result = await db.lead.create(
                             data={
                                 "tenantId": tenant_id,
+                                "jobId": job_id,
                                 "companyName": company_name,
                                 "contactEmail": emails,
                                 "contactPhone": phones,

@@ -8,6 +8,7 @@ from typing import Dict, List
 
 from app.extractor import ContactExtractor
 from app.schemas import (
+    CombinedJobStatusContactInfoResponse,
     ContactInfo,
     ExtractSearchResponse,
     JobStatusResponse,
@@ -65,7 +66,11 @@ class ExtractController:
         # Start background task
         asyncio.create_task(self._run_extraction_job(request, user_id, job_id))
 
-        return ExtractSearchResponse(job_id=job_id, message="Started processing job")
+        return ExtractSearchResponse(
+            job_id=job_id,
+            message="Started processing job",
+            job_started_at=datetime.utcnow(),
+        )
 
     async def _run_extraction_job(
         self, request: CombinedSearchExtractRequest, user_id: str, job_id: str
@@ -136,7 +141,9 @@ class ExtractController:
                 data={"status": "FAILED"},
             )
 
-    async def get_job_update(self, job_id: str, user_id: str) -> JobStatusResponse:
+    async def get_job_update(
+        self, job_id: str, user_id: str, since: datetime | None
+    ) -> CombinedJobStatusContactInfoResponse:
         try:
             job = await self.db.leadgenerationjob.find_unique(where={"id": job_id})
 
@@ -148,10 +155,43 @@ class ExtractController:
                     status_code=403, detail="Unauthorized access to this job"
                 )
 
-            return JobStatusResponse(
+            leads = []
+            if since is None:
+                leads = await self.db.lead.find_many(
+                    where={"tenantId": user_id, "jobId": job_id},
+                    order={"createdAt": "desc"},
+                )
+            else:
+                leads = await self.db.lead.find_many(
+                    where={
+                        "tenantId": user_id,
+                        "jobId": job_id,
+                        "createdAt": {"gte": since},
+                    },
+                    order={"createdAt": "desc"},
+                )
+
+            contact_infos: list[ContactInfo] = []
+            for lead in leads:
+                contact_info = ContactInfo(
+                    emails=lead.contactEmail,
+                    phones=lead.contactPhone,
+                    addresses=lead.contactAddress,
+                    company_name=lead.companyName,
+                    description="",
+                )
+                contact_infos.append(contact_info)
+
+            job_status_response = JobStatusResponse(
                 job_id=job.id,
                 total_requested=job.totalRequested,
                 generated_count=job.generatedCount,
+            )
+
+            return CombinedJobStatusContactInfoResponse(
+                job_status_response=job_status_response,
+                contact_infos=contact_infos,
+                retrieved_at=datetime.utcnow(),
             )
 
         except Exception as e:

@@ -148,12 +148,16 @@ model Lead {
   source            lead_source        @default(AI_GENERATED)
   linkedInUrl       String?            @unique
   companySize       Int?               @default(0)
+  jobId             String?
   bulkEmailJobLeads BulkEmailJobLead[]
   campaignLeads     CampaignLead[]
   emailLogs         EmailLog[]
+  LeadGenerationJob LeadGenerationJob? @relation(fields: [jobId], references: [id])
   tenant            Tenant             @relation(fields: [tenantId], references: [id])
 
+  @@unique([jobId, contactEmail], map: "Lead_jobId_email_key")
   @@index([tenantId, status])
+  @@index([jobId])
 }
 
 model DomainIdentity {
@@ -297,6 +301,7 @@ model LeadGenerationJob {
   totalRequested Int
   generatedCount Int       @default(0)
   urls           String[]  @default([])
+  Lead           Lead[]
   tenant         Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, status])

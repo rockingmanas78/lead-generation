@@ -1,12 +1,13 @@
 from typing import Dict
+from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel, Field
 from app.auth.auth_bearer import JWTBearer
 from app.controllers.extract import ExtractController
 from app.schemas import (
+    CombinedJobStatusContactInfoResponse,
     ContactInfo,
     ExtractSearchResponse,
-    JobStatusResponse,
     CombinedSearchExtractRequest,
 )
 
@@ -47,10 +48,12 @@ async def search_and_extract(
 
 @router.get(
     "/get_job_update",
-    response_model=JobStatusResponse,
+    response_model=CombinedJobStatusContactInfoResponse,
     dependencies=[Depends(JWTBearer())],
 )
-async def search_and_extract(job_id: str, http_request: Request):
+async def search_and_extract(
+    job_id: str, http_request: Request, since: datetime | None = None
+):
     token = await JWTBearer()(http_request)
     from app.config import JWT_SECRET, JWT_ALGORITHM
     import jwt
@@ -58,4 +61,4 @@ async def search_and_extract(job_id: str, http_request: Request):
     payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     user_id = payload.get("tenantId")
 
-    return await extract_controller.get_job_update(job_id, user_id)
+    return await extract_controller.get_job_update(job_id, user_id, since)
