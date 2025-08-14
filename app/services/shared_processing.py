@@ -140,6 +140,7 @@ async def process_urls_batch(
                     generated_count += 1
                 except Exception as e:
                     logger.error(f"Failed to insert lead for {url}: {e}")
+                    generated_count -= 1
 
             await db.leadgenerationjob.update(
                 where={"id": job_id}, data={"generatedCount": generated_count}
