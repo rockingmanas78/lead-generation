@@ -60,6 +60,7 @@ class ExtractController:
                 "tenantId": user_id,
                 "status": "PROCESSING",
                 "totalRequested": request.num_results,
+                "prompt": request.prompt,
             }
         )
 
