@@ -151,6 +151,7 @@ class GeneratedEmailResponse(BaseModel):
 
 
 class GeneratedEmailRequest(BaseModel):
+    conversation_id: str
     campaign_id: str
     latest_email: str
     sender_name: str

@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_email_reply(
-    campaign_id: str,
+    conversation_id: str,
     latest_email_content: str,
     sender_info: dict,
     config: dict,
     instructions: str | None = None,
 ) -> dict[str, Any]:
-    email_chain = await get_email_chain(campaign_id)
+    email_chain = await get_email_chain(conversation_id)
     formatted_chain, emails_included = format_chain_for_llm(email_chain)
 
     chain_tokens = count_tokens(formatted_chain)
@@ -138,7 +138,7 @@ async def generate_email_reply(
             "content": reply_data.get("reply", final_response),
             "scheduled_date": reply_data.get("scheduled_date"),
             "reasoning": reply_data.get("reasoning", "Standard email reply generated"),
-            "campaign_id": campaign_id,
+            "conversation_id": conversation_id,
             "full_response": final_response,
             "context_info": {
                 "total_emails_in_thread": len(email_chain),
@@ -152,7 +152,7 @@ async def generate_email_reply(
         return {
             "success": False,
             "error": str(e),
-            "campaign_id": campaign_id,
+            "conversation_id": conversation_id,
             "context_info": {
                 "total_emails_in_thread": len(email_chain),
                 "emails_included_in_context": emails_included,
@@ -162,7 +162,7 @@ async def generate_email_reply(
 
 
 async def handle_email_reply_request(
-    campaign_id: str,
+    conversation_id: str,
     latest_email_content: str,
     sender_info: dict[str, str],
     recipients: list[str],
@@ -172,7 +172,7 @@ async def handle_email_reply_request(
     config = {"configurable": {"tenant_id": tenant_id}}
 
     reply_result = await generate_email_reply(
-        campaign_id=campaign_id,
+        conversation_id=conversation_id,
         latest_email_content=latest_email_content,
         sender_info=sender_info,
         config=config,

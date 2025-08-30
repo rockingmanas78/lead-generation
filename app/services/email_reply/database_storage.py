@@ -13,7 +13,7 @@ async def store_generated_email(
 ) -> GeneratedEmailResponse:
     sender_info = {"name": req.sender_name, "email": req.sender_email}
     reply_result = await handle_email_reply_request(
-        campaign_id=req.campaign_id,
+        conversation_id=req.conversation_id,
         latest_email_content=req.latest_email,
         sender_info=sender_info,
         recipients=req.recipient_emails,
@@ -36,6 +36,26 @@ async def store_generated_email(
                 )
                 raise
 
+        email_message = await db.emailmessage.create(
+            {
+                "tenantId": tenant_id,
+                "conversationId": req.conversation_id,
+                "direction": "OUTBOUND",
+                "providerMessageId": f"generated-{datetime.now().isoformat()}",
+                "subject": reply_result["subject"],
+                "from_": [sender_info["email"]],
+                "to": req.recipient_emails,
+                "cc": [],
+                "bcc": [],
+                "text": reply_result["content"],
+                "html": None,
+                "sentAt": scheduled_date,
+                "createdAt": datetime.now(),
+                "campaignId": req.campaign_id,
+                "leadId": req.lead_id,
+            }
+        )
+
         reply_email_log = await db.emaillog.create(
             {
                 "tenantId": tenant_id,
@@ -48,7 +68,13 @@ async def store_generated_email(
                 "content": reply_result["content"],
                 "createdAt": datetime.now(),
                 "emailType": "AI_GENERATED",
+                "providerMessageId": email_message.providerMessageId,
+                "outboundMessageId": email_message.id,
             }
+        )
+
+        await db.emailmessage.update(
+            where={"id": email_message.id}, data={"emailLogId": reply_email_log.id}
         )
 
         generated_email = await db.generatedemail.create(
@@ -76,6 +102,10 @@ async def store_generated_email(
                 "jobId": bulk_job.id,
                 "leadId": req.lead_id,
             }
+        )
+
+        await db.conversation.update(
+            where={"id": req.conversation_id}, data={"lastMessageAt": datetime.now()}
         )
 
         return GeneratedEmailResponse(response="Reply generated")

@@ -3,10 +3,12 @@ from .constants import MAX_EMAIL_CHAIN_TOKENS
 from .token_utils import count_tokens, tokenizer
 
 
-async def get_email_chain(campaign_id: str, limit: int = 50) -> list[dict[str, str]]:
-    emails = await db.emaillog.find_many(
-        where={"campaignId": campaign_id},
-        order={"createdAt": "desc"},
+async def get_email_chain(
+    conversation_id: str, limit: int = 50
+) -> list[dict[str, str]]:
+    emails = await db.emailmessage.find_many(
+        where={"conversationId": conversation_id},
+        order={"createdAt": "asc"},
         take=limit,
     )
     return [format_email(email) for email in emails]
@@ -15,13 +17,16 @@ async def get_email_chain(campaign_id: str, limit: int = 50) -> list[dict[str, s
 def format_email(email) -> dict[str, str]:
     return {
         "id": email.id,
-        "sender": email.senderEmail,
-        "sender_name": email.senderName,
-        "recipients": [r for r in email.recipientEmails],
-        "subject": email.subject,
-        "content": email.content,
-        "timestamp": email.createdAt.isoformat(),
-        "campaign_id": email.campaignId,
+        "sender": email.from_[0] if email.from_ else "",
+        "sender_name": email.from_[0].split("<")[0].strip()
+        if email.from_ and "<" in email.from_[0]
+        else "",
+        "recipients": " ".join(email.to + email.cc + email.bcc),
+        "subject": email.subject or "",
+        "content": email.text or email.html or "",
+        "timestamp": (email.sentAt or email.receivedAt or email.createdAt).isoformat(),
+        "direction": email.direction.lower(),
+        "provider_message_id": email.providerMessageId,
     }
 
 
@@ -35,10 +40,8 @@ def format_chain_for_llm(
     total_tokens = 0
     emails_included = 0
 
-    email_chain_reversed = list(reversed(email_chain))
-
-    if email_chain_reversed:
-        latest_email = email_chain_reversed[-1]
+    latest_email = email_chain[-1] if email_chain else None
+    if latest_email:
         latest_formatted = format_single_email(latest_email)
         latest_tokens = count_tokens(latest_formatted)
 
@@ -47,7 +50,7 @@ def format_chain_for_llm(
             total_tokens += latest_tokens
             emails_included = 1
 
-            for email in reversed(email_chain_reversed[:-1]):
+            for email in reversed(email_chain[:-1]):
                 email_formatted = format_single_email(email)
                 email_tokens = count_tokens(email_formatted)
 
@@ -66,14 +69,19 @@ def format_chain_for_llm(
 
     total_emails = len(email_chain)
     if emails_included < total_emails:
-        summary = f"\n[NOTE: Showing {emails_included} most recent emails out of {total_emails} total emails in this thread for context management]\n"
+        summary = f"\n[NOTE: Showing {emails_included} most recent emails out of {total_emails} total emails in this conversation for context management]\n"
         chain_text = summary + chain_text
 
     return chain_text, emails_included
 
 
 def format_single_email(email: dict[str, str]) -> str:
+    direction_indicator = (
+        "INBOUND" if email.get("direction") == "inbound" else "OUTBOUND"
+    )
+
     return f"""
+    {direction_indicator}
     FROM: {email["sender_name"]} <{email["sender"]}>
     TO: {", ".join(email["recipients"])}
     DATE: {email["timestamp"]}
@@ -87,7 +95,12 @@ def format_single_email(email: dict[str, str]) -> str:
 def truncate_email_content(email: dict[str, str], max_tokens: int) -> dict[str, str]:
     email_copy = email.copy()
 
+    direction_indicator = (
+        "INBOUND " if email.get("direction") == "inbound" else "OUTBOUND "
+    )
+
     metadata = f"""
+    {direction_indicator}
     FROM: {email["sender_name"]} <{email["sender"]}>
     TO: {", ".join(email["recipients"])}
     DATE: {email["timestamp"]}
