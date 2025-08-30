@@ -26,7 +26,7 @@ async def generate_email_reply(
     instructions: str | None = None,
 ) -> dict[str, Any]:
     email_chain = await get_email_chain(conversation_id)
-    formatted_chain, emails_included = format_chain_for_llm(email_chain)
+    formatted_chain, emails_included = await format_chain_for_llm(email_chain)
 
     chain_tokens = count_tokens(formatted_chain)
     latest_email_tokens = count_tokens(latest_email_content)
