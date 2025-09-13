@@ -19,6 +19,8 @@ dependencies = [
     "pyjwt>=2.10.1",
     "pytest-playwright>=0.7.0",
     "python-dotenv>=1.1.0",
+    "phonenumbers>=8.13.45",
+    "tldextract>=5.1.2",
 ]
 
 [tool.prisma]

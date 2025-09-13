@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import router as api_router
 from app.services.process_unfinished_queries import lifespan
+from app.logging_config import configure_logging
+
+# Logging configuration
+configure_logging()
 
 app = FastAPI(lifespan=lifespan)
 

@@ -18,7 +18,7 @@ model Plan {
 }
 
 model PlanVersion {
-  id             String         @id @default(uuid())
+  id             String         @id @default(dbgenerated("gen_random_uuid()"))
   planId         String
   version        Int
   zone           ZoneCode
@@ -45,12 +45,15 @@ model Component {
 }
 
 model PriceId {
-  id              String      @id @default(uuid())
+  id              String         @id @default(dbgenerated("(gen_random_uuid())::text"))
   planVersionId   String
-  gateway         String
-  price           Int
+  gateway         PaymentGateway
+  price           Int?
   externalPriceId String
-  PlanVersion     PlanVersion @relation(fields: [planVersionId], references: [id])
+  gatewayPlanId   String?
+  PlanVersion     PlanVersion    @relation(fields: [planVersionId], references: [id])
+
+  @@unique([planVersionId, gateway])
 }
 
 model Tenant {
@@ -67,7 +70,6 @@ model Tenant {
   Conversation       Conversation[]
   DomainIdentity     DomainIdentity[]
   campaigns          EmailCampaign[]
-  emailLogs          EmailLog[]
   EmailMessage       EmailMessage[]
   templates          EmailTemplate[]
   Feedback           Feedback[]
@@ -77,6 +79,8 @@ model Tenant {
   jobs               LeadGenerationJob[]
   PaymentTransaction PaymentTransaction[]
   TenantOnboarding   TenantOnboarding?
+  UsageCounter       UsageCounter[]
+  UsageEvent         UsageEvent[]
   users              User[]
   WebsiteContent     WebsiteContent[]
 }
@@ -90,17 +94,33 @@ model Subscription {
   currentStart       DateTime
   currentEnd         DateTime
   brokerId           String?
+  planPriceId        String?
+  cycle              String?              @default("MONTHLY")
+  nextBillingAt      DateTime?            @db.Timestamptz(6)
+  provider           String?
+  providerSubId      String?
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime             @default(now()) @db.Timestamptz(6)
+  providerCustId     String?
+  cancelAtCycleEnd   Boolean?
   PaymentTransaction PaymentTransaction[]
+  UsageCounter       UsageCounter[]
+  UsageEvent         UsageEvent[]
 }
 
 model UsageEvent {
-  id         BigInt      @id @default(autoincrement())
-  tenantId   String
-  metric     MeterMetric
-  qty        Int
-  recordedAt DateTime    @default(now())
+  id             BigInt        @id @default(autoincrement())
+  tenantId       String
+  metric         MeterMetric
+  qty            Int
+  recordedAt     DateTime      @default(now())
+  subscriptionId String?
+  idempotencyKey String?
+  Subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onUpdate: NoAction, map: "UsageEvent_subscription_fkey")
+  Tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "UsageEvent_tenant_fkey")
 
   @@index([tenantId, recordedAt])
+  @@index([tenantId, recordedAt], map: "UsageEvent_tenant_recordedAt_idx")
 }
 
 model DailyCapCounter {
@@ -154,7 +174,6 @@ model Lead {
   jobId             String?
   bulkEmailJobLeads BulkEmailJobLead[]
   campaignLeads     CampaignLead[]
-  emailLogs         EmailLog[]
   EmailMessage      EmailMessage[]
   LeadGenerationJob LeadGenerationJob? @relation(fields: [jobId], references: [id])
   tenant            Tenant             @relation(fields: [tenantId], references: [id])
@@ -228,39 +247,7 @@ model EmailCampaign {
   campaignLeads CampaignLead[]
   template      EmailTemplate  @relation(fields: [templateId], references: [id])
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  logs          EmailLog[]
   EmailMessage  EmailMessage[]
-}
-
-model EmailLog {
-  id                String          @id @default(uuid())
-  tenantId          String
-  campaignId        String
-  leadId            String
-  status            EmailStatus     @default(QUEUED)
-  sentAt            DateTime?
-  openedAt          DateTime?
-  clickedAt         DateTime?
-  repliedAt         DateTime?
-  createdAt         DateTime?       @db.Timestamptz(6)
-  senderName        String?
-  senderEmail       String?
-  recipientEmails   String[]
-  subject           String?
-  content           String?
-  emailType         EmailType?      @default(MANUAL)
-  providerMessageId String?
-  outboundMessageId String?
-  replyToToken      String?
-  campaign          EmailCampaign   @relation(fields: [campaignId], references: [id])
-  lead              Lead            @relation(fields: [leadId], references: [id])
-  tenant            Tenant          @relation(fields: [tenantId], references: [id])
-  EmailMessage      EmailMessage[]
-  GeneratedEmail    GeneratedEmail?
-
-  @@index([tenantId, status])
-  @@index([tenantId, providerMessageId], map: "emaillog_tenant_providerMessageId_idx")
-  @@index([tenantId, replyToToken], map: "emaillog_tenant_replyToToken_idx")
 }
 
 model BulkEmailJob {
@@ -376,10 +363,13 @@ model PaymentTransaction {
   id             String       @id @default(dbgenerated("(gen_random_uuid())::text"))
   tenantId       String
   subscriptionId String
-  phonepeOrderId String
+  providerId     String       @unique(map: "paymenttransaction_providerid_unique")
   amount         Int
   status         String       @default("INITIATED")
   createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+  invoiceId      String?
+  invoiceUrl     String?
+  paymentId      String?
   Subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_paymenttransaction_subscription")
   Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_paymenttransaction_tenant")
 }
@@ -474,13 +464,13 @@ model WaitListMembers {
 }
 
 model GeneratedEmail {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  emailLogId    String    @unique
-  subject       String
-  content       String
-  createdAt     DateTime  @default(now()) @db.Timestamp(6)
-  scheduledDate DateTime? @db.Timestamp(6)
-  EmailLog      EmailLog  @relation(fields: [emailLogId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subject        String
+  content        String
+  createdAt      DateTime      @default(now()) @db.Timestamp(6)
+  scheduledDate  DateTime?     @db.Timestamp(6)
+  emailMessageId String?       @db.Uuid
+  EmailMessage   EmailMessage? @relation(fields: [emailMessageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model Conversation {
@@ -501,37 +491,42 @@ model Conversation {
 }
 
 model EmailMessage {
-  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId          String
-  conversationId    String          @db.Uuid
-  direction         email_direction
-  provider          String          @default("AWS_SES")
-  providerMessageId String
-  subject           String?
-  from_             String[]        @default([]) @map("from")
-  to                String[]        @default([])
-  cc                String[]        @default([])
-  bcc               String[]        @default([])
-  text              String?
-  html              String?
-  headers           Json?
-  verdicts          Json?
-  inReplyTo         String?
-  referencesIds     String[]
-  plusToken         String?
-  s3Bucket          String?
-  s3Key             String?
-  receivedAt        DateTime?       @db.Timestamptz(6)
-  sentAt            DateTime?       @db.Timestamptz(6)
-  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
-  campaignId        String?
-  leadId            String?
-  emailLogId        String?
-  EmailCampaign     EmailCampaign?  @relation(fields: [campaignId], references: [id], onUpdate: NoAction, map: "emailmessage_campaign_fkey")
-  Conversation      Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "emailmessage_conversation_fkey")
-  EmailLog          EmailLog?       @relation(fields: [emailLogId], references: [id], onUpdate: NoAction, map: "emailmessage_emaillog_fkey")
-  Lead              Lead?           @relation(fields: [leadId], references: [id], onUpdate: NoAction, map: "emailmessage_lead_fkey")
-  Tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "emailmessage_tenant_fkey")
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String
+  conversationId     String           @db.Uuid
+  direction          email_direction
+  provider           String           @default("AWS_SES")
+  providerMessageId  String
+  subject            String?
+  from_              String[]         @default([]) @map("from")
+  to                 String[]         @default([])
+  cc                 String[]         @default([])
+  bcc                String[]         @default([])
+  text               String?
+  html               String?
+  headers            Json?
+  verdicts           Json?
+  inReplyTo          String?
+  referencesIds      String[]
+  plusToken          String?
+  s3Bucket           String?
+  s3Key              String?
+  receivedAt         DateTime?        @db.Timestamptz(6)
+  sentAt             DateTime?        @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
+  campaignId         String?
+  leadId             String?
+  lastDeliveryStatus String?
+  firstOpenedAt      DateTime?        @db.Timestamptz(6)
+  opensCount         Int?             @default(0)
+  clicksCount        Int?             @default(0)
+  lastEventAt        DateTime?        @db.Timestamptz(6)
+  EmailEvent         EmailEvent[]
+  EmailCampaign      EmailCampaign?   @relation(fields: [campaignId], references: [id], onUpdate: NoAction, map: "emailmessage_campaign_fkey")
+  Conversation       Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "emailmessage_conversation_fkey")
+  Lead               Lead?            @relation(fields: [leadId], references: [id], onUpdate: NoAction, map: "emailmessage_lead_fkey")
+  Tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "emailmessage_tenant_fkey")
+  GeneratedEmail     GeneratedEmail[]
 
   @@unique([tenantId, providerMessageId], map: "emailmessage_tenant_providerMessageId_uq")
   @@index([tenantId, conversationId, createdAt], map: "emailmessage_tenant_conv_createdAt_idx")
@@ -552,6 +547,81 @@ model InboundReceipt {
   Tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "inboundreceipt_tenant_fkey")
 
   @@index([tenantId, receivedAt], map: "inboundreceipt_tenant_receivedAt_idx")
+}
+
+model AppEvent {
+  event_id      String   @id(map: "app_event_pkey") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  occurred_at   DateTime @db.Timestamptz(6)
+  received_at   DateTime @default(now()) @db.Timestamptz(6)
+  event_name    String
+  user_id       String?
+  anonymous_id  String?
+  session_id    String?
+  tenant_id     String?
+  source        String?
+  page_url      String?
+  referrer      String?
+  ip            String?  @db.Inet
+  user_agent    String?
+  properties    Json     @default("{}")
+  context       Json     @default("{}")
+  event_version Int      @default(1) @db.SmallInt
+  schema_key    String?
+
+  @@index([event_name, occurred_at(sort: Desc)], map: "idx_app_event_name_time")
+  @@index([occurred_at], map: "idx_app_event_time")
+  @@index([user_id, occurred_at(sort: Desc)], map: "idx_app_event_user_time")
+}
+
+model EmailEvent {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String
+  emailMessageId    String       @db.Uuid
+  providerMessageId String
+  eventType         String
+  occurredAt        DateTime     @db.Timestamptz(6)
+  snsMessageId      String       @unique
+  payload           Json         @default("{}")
+  createdAt         DateTime     @default(now()) @db.Timestamptz(6)
+  EmailMessage      EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([emailMessageId], map: "idx_emailevent_emailmessage")
+  @@index([providerMessageId], map: "idx_emailevent_provider")
+  @@index([tenantId, eventType], map: "idx_emailevent_tenant_eventtype")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model UsageCounter {
+  tenantId       String
+  subscriptionId String
+  metric         MeterMetric
+  windowType     CapPeriod
+  windowStart    DateTime     @db.Timestamptz(6)
+  windowEnd      DateTime?    @db.Timestamptz(6)
+  qty            Int          @default(0)
+  updatedAt      DateTime     @default(now()) @db.Timestamptz(6)
+  Subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "UsageCounter_subscription_fkey")
+  Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "UsageCounter_tenant_fkey")
+
+  @@id([tenantId, subscriptionId, metric, windowType, windowStart])
+  @@index([tenantId, metric, windowType, windowStart], map: "UsageCounter_lookup_idx")
+}
+
+model WebhookEvent {
+  eventId     String    @id
+  provider    String
+  eventType   String
+  receivedAt  DateTime  @default(now()) @db.Timestamptz(6)
+  processed   Boolean   @default(false)
+  processedAt DateTime? @db.Timestamptz(6)
+}
+
+model identity_link {
+  anonymous_id String
+  user_id      String
+  linked_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([anonymous_id, user_id])
 }
 
 enum PlanType {
@@ -701,4 +771,18 @@ enum EmailType {
 enum email_direction {
   INBOUND
   OUTBOUND
+}
+
+enum PaymentGateway {
+  RAZORPAY
+  STRIPE
+  WISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+  PENDING
 }
