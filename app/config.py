@@ -17,5 +17,7 @@ GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM")
 
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set")
