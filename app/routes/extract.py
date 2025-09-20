@@ -59,6 +59,6 @@ async def search_and_extract(
     import jwt
 
     payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    user_id = payload.get("tenantId")
+    tenant_id = payload.get("tenantId")
 
-    return await extract_controller.get_job_update(job_id, user_id, since)
+    return await extract_controller.get_job_update(job_id, tenant_id, since)

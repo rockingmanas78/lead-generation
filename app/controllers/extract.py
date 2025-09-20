@@ -180,7 +180,7 @@ class ExtractController:
             )
 
     async def get_job_update(
-        self, job_id: str, user_id: str, since
+        self, job_id: str, tenant_id: str, since
     ) -> CombinedJobStatusContactInfoResponse:
         try:
             job = await self.db.leadgenerationjob.find_unique(where={"id": job_id})
@@ -188,18 +188,18 @@ class ExtractController:
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
 
-            if job.tenantId != user_id:
+            if job.tenantId != tenant_id:
                 raise HTTPException(status_code=403, detail="Unauthorized access to this job")
 
             if since is None:
                 leads = await self.db.lead.find_many(
-                    where={"tenantId": user_id, "jobId": job_id},
+                    where={"tenantId": tenant_id, "jobId": job_id},
                     order={"createdAt": "desc"},
                 )
             else:
                 leads = await self.db.lead.find_many(
                     where={
-                        "tenantId": user_id,
+                        "tenantId": tenant_id,
                         "jobId": job_id,
                         "createdAt": {"gte": since},
                     },
@@ -221,6 +221,7 @@ class ExtractController:
                 job_id=job.id,
                 total_requested=job.totalRequested,
                 generated_count=job.generatedCount,
+                status=job.status,
             )
 
             return CombinedJobStatusContactInfoResponse(

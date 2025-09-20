@@ -43,7 +43,7 @@ class CombinedSearchExtractRequest(BaseModel):
     num_results: int = 6
     offset: int = 0
     # --- new knobs the service understands ---
-    contact_focus: ContactFocus = ContactFocus.both
+    contact_focus: ContactFocus = ContactFocus.email
     exclude_aggregators: bool = False
     domains_hint: Optional[List[str]] = None  # e.g., ["site:.co.uk", "site:.ae"]
 
@@ -88,6 +88,7 @@ class JobStatusResponse(BaseModel):
     job_id: str
     total_requested: int
     generated_count: int
+    status: str
 
 class CombinedJobStatusContactInfoResponse(BaseModel):
     job_status_response: JobStatusResponse
