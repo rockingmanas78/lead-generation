@@ -195,6 +195,7 @@ class LinkedInScraper:
                     else:
                         error_msg = f"Google API error: HTTP {response.status}"
                         if response.status == 429:
+                            print(f"Rate limit exceeded for query in scrape linkedin: {query}")
                             error_msg += " - Rate limit exceeded"
                         elif response.status == 403:
                             error_msg += " - API key invalid or quota exceeded"

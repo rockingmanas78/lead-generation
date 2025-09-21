@@ -177,6 +177,7 @@ User prompt: {user_prompt}
                         "error": error_payload
                     })
                     if response.status in (403, 429):
+                        print(f"Google CSE error {response.status}: {error_payload}")
                         raise GoogleSearchError("CSE HTTP " + str(response.status))
                     raise GoogleSearchError(f"Search service error {response.status}")
 
@@ -254,6 +255,7 @@ User prompt: {user_prompt}
         if session_id not in self.sessions:
             inferred_locations = extract_locations(prompt)
             queries = await self.prompt_to_queries(prompt, inferred_locations)
+            print(f"Generated queries: {queries} for prompt: {prompt} with locations: {inferred_locations}")
             self.sessions[session_id] = SearchSession(session_id, prompt, queries)
             await self.fetch_more_results(self.sessions[session_id], offset + num_results + 10)
 

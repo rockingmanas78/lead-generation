@@ -35,7 +35,7 @@ model PlanVersion {
 }
 
 model Component {
-  id            String      @id @default(uuid())
+  id            String      @id @default(dbgenerated("gen_random_uuid()"))
   planVersionId String
   metric        MeterMetric
   includedQty   Int
@@ -144,15 +144,22 @@ model CampaignLead {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  tenantId     String
-  email        String    @unique
-  passwordHash String
-  role         UserRole  @default(MANAGER)
-  verified     Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  deletedAt    DateTime?
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  id            String    @id @default(uuid())
+  tenantId      String
+  email         String    @unique
+  passwordHash  String
+  role          UserRole  @default(MANAGER)
+  verified      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+  oauthProvider String?   @db.VarChar(32)
+  oauthId       String?
+  name          String?   @db.VarChar(120)
+  phoneNumber   String?   @db.VarChar(32)
+  location      String?   @db.VarChar(120)
+  bio           String?
+  avatarUrl     String?
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
 }
 
 model Lead {
