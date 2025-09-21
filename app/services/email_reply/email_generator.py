@@ -129,6 +129,8 @@ async def generate_email_reply(
 
         reply_data = parse_email_response(final_response)
 
+        print("Parsed reply data:", reply_data)
+
         return {
             "success": True,
             "subject": reply_data.get(
