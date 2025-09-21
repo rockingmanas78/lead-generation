@@ -70,7 +70,7 @@ async def generate_email(request: GeneratedEmailRequest, http_request: Request):
         tenant_id = payload.get("tenantId")
     elif mode == "internal":
         # If your internal caller can pass tenant, read it here (minimal change):
-        tenant_id = http_request.headers.get("tenant_id")
+        tenant_id = http_request.headers.get("tenant-id")
         if not tenant_id:
             # If you prefer hard-fail when tenantId is missing in internal mode:
             raise HTTPException(status_code=400, detail="x-tenant-id header required for internal calls.")
