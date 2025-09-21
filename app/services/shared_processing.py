@@ -37,7 +37,7 @@ def normalize_locations(locations: Optional[List[str]]) -> List[str]:
 
 
 def compile_location_patterns(locations: List[str]) -> List[re.Pattern]:
-    """
+    r"""
     Build regex patterns with word boundaries, allowing flexible whitespace inside multi-word locations.
     e.g., "New Delhi" -> r'\bNew\s+Delhi\b' (case-insensitive)
     """
