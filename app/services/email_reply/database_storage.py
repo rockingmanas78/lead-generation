@@ -6,7 +6,6 @@ from .email_generator import handle_email_reply_request
 
 logger = logging.getLogger(__name__)
 
-
 async def store_generated_email(
     req: GeneratedEmailRequest,
     tenant_id: str,
@@ -37,12 +36,11 @@ async def store_generated_email(
                 )
                 raise
 
-        # add before creating email_message
+        # Fetch conversation to derive plusToken (threadKey)
         conv = await db.conversation.find_unique(
-            where={"id": req.conversation_id},
-            select={"threadKey": True},
+            where={"id": req.conversation_id}
         )
-        plus_token = (conv and conv.get("threadKey")) or None
+        plus_token = getattr(conv, "threadKey", None) if conv else None
 
         email_message = await db.emailmessage.create(
             {
@@ -101,7 +99,6 @@ async def store_generated_email(
     except Exception as e:
         logger.error(f"Could not store the email in the db {e}")
         raise
-
 
 # import logging
 # from datetime import datetime
