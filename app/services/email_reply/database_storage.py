@@ -37,11 +37,19 @@ async def store_generated_email(
                 )
                 raise
 
+        # add before creating email_message
+        conv = await db.conversation.find_unique(
+            where={"id": req.conversation_id},
+            select={"threadKey": True},
+        )
+        plus_token = (conv and conv.get("threadKey")) or None
+
         email_message = await db.emailmessage.create(
             {
                 "tenantId": tenant_id,
                 "conversationId": req.conversation_id,
                 "direction": "OUTBOUND",
+                "plusToken": plus_token,
                 "providerMessageId": f"generated-{datetime.now().isoformat()}",
                 "subject": reply_result["subject"],
                 "from_": [sender_info["email"]],
