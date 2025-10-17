@@ -249,8 +249,7 @@ async def process_urls_batch(
                             "tenant": tenant_id, "job": job_id, "url": url,
                             "company": company_name_value, "emails": emails_clean, "phones": phones_clean, "locations": normalized_locations,
                         })
-
-                    generated_count += 1
+                        generated_count += 1
                 except Exception as persist_error:
                     logger.error(f"Failed to insert lead for {url}: {persist_error}")
                     # do not increment on failure
