@@ -368,3 +368,29 @@ class MultiTenantRAG:
         except Exception as e:
             logger.error(f"Error generating embedding: {str(e)}")
             raise
+
+    async def compute_confidence(
+        self,question: str, lead_text: str, tenant_id: str, sources: list[IngestionSourcesEnum] | None
+    ) -> str:
+        context = await self.get_context(lead_text, tenant_id, sources)
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a helpful assistant that computes confidence. Be concise and accurate.",
+                ),
+                ("human", "Context: {context}\n\nQuestion: {lead_text}"),
+            ]
+        )
+
+        chain = prompt | self.llm
+
+        try:
+            response = await chain.ainvoke({"context": context, "question": question})
+        except Exception as e:
+            logger.error(f"Cannot get response from llm: {e}")
+            raise
+
+        return response.content
+

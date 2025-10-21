@@ -1,3 +1,8 @@
 .env
 __pycache__
 .cache
+/app/services/__pycache__
+/app/models/__pycache__
+/app/controllers/__pycache__
+/.venv
+/venv

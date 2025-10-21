@@ -15,6 +15,10 @@ from app.utils import (
     unique_preserve_order,
 )
 
+## confidence logic
+from app.services.lead_services import calculate_lead_confidence
+
+
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 3
@@ -235,7 +239,8 @@ async def process_urls_batch(
                     )
 
                     if not existing_lead:
-                        await db.lead.create(
+                        # create lead and capture returned record (Prisma returns the created object)
+                        created_lead = await db.lead.create(
                             data={
                                 "tenantId": tenant_id,
                                 "jobId": job_id,
@@ -245,11 +250,37 @@ async def process_urls_batch(
                                 "contactAddress": addresses_list or [""],
                             }
                         )
+
+                        # log insertion with context
                         logger.info("lead_inserted", extra={
-                            "tenant": tenant_id, "job": job_id, "url": url,
-                            "company": company_name_value, "emails": emails_clean, "phones": phones_clean, "locations": normalized_locations,
+                            "tenant": tenant_id,
+                            "job": job_id,
+                            "url": url,
+                            "company": company_name_value,
+                            "emails": emails_clean,
+                            "phones": phones_clean,
+                            "locations": normalized_locations,
                         })
+                        print(created_lead)
+                        print(created_lead.id, "created lead id")
+
+                        # Prepare inputs for confidence calculation
+                        lead_id = getattr(created_lead, "id", None) or created_lead.get("id") if isinstance(created_lead, dict) else None
+                        our_company = {"description": company_name_value}
+
+                        if lead_id:
+                            try:
+                                confidence = await calculate_lead_confidence(lead_id, our_company, tenant_id)
+                                logger.info("lead_confidence_computed", extra={"lead_id": lead_id, "confidence": confidence})
+                                
+                            except Exception as conf_err:
+                                logger.error(f"Failed to compute confidence for lead {lead_id}: {conf_err}")
+
                         generated_count += 1
+                        
+
+
+                    
                 except Exception as persist_error:
                     logger.error(f"Failed to insert lead for {url}: {persist_error}")
                     # do not increment on failure
