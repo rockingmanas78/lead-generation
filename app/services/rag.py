@@ -370,7 +370,7 @@ class MultiTenantRAG:
             raise
 
     async def compute_confidence(
-        self,question: str, lead_text: str, tenant_id: str, sources: list[IngestionSourcesEnum] | None
+        self, lead_text: str, tenant_id: str, sources: list[IngestionSourcesEnum] | None
     ) -> str:
         context = await self.get_context(lead_text, tenant_id, sources)
 
@@ -378,7 +378,7 @@ class MultiTenantRAG:
             [
                 (
                     "system",
-                    "You are a helpful assistant that computes confidence. Be concise and accurate.",
+                    "You are a helpful assistant that computes confidence, that is, how much a lead is probable to match the service provider based on the lead description provided as lead text. You have context as the data of service provider. Give the value as an decimal ranging from 0 to 1, 0 depicting no chances of lead closing and 1 depicting high chances of lead closing.",
                 ),
                 ("human", "Context: {context}\n\nQuestion: {lead_text}"),
             ]
@@ -387,7 +387,8 @@ class MultiTenantRAG:
         chain = prompt | self.llm
 
         try:
-            response = await chain.ainvoke({"context": context, "question": question})
+            response = await chain.ainvoke({"context": context, "lead_text": lead_text})
+            print(f"Confidence computation response: {response.content}")
         except Exception as e:
             logger.error(f"Cannot get response from llm: {e}")
             raise

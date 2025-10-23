@@ -210,6 +210,7 @@ async def process_urls_batch(
                 phones_clean = clean_phone_numbers(contact.get("phones") or [])
                 addresses_list = contact.get("addresses") or []
                 company_name_value = contact.get("company_name", url) or url
+                description = contact.get("description", "") or ""
 
                 # Focus rule: require email when CONTACT_FOCUS == 'email'
                 if CONTACT_FOCUS == "email" and not emails_clean:
@@ -248,6 +249,7 @@ async def process_urls_batch(
                                 "contactEmail": emails_clean or [""],
                                 "contactPhone": phones_clean or [""],
                                 "contactAddress": addresses_list or [""],
+                                "description": description or "",
                             }
                         )
 
@@ -263,14 +265,12 @@ async def process_urls_batch(
                         })
                         print(created_lead)
                         print(created_lead.id, "created lead id")
+                        lead_id = created_lead.id
 
-                        # Prepare inputs for confidence calculation
-                        lead_id = getattr(created_lead, "id", None) or created_lead.get("id") if isinstance(created_lead, dict) else None
-                        our_company = {"description": company_name_value}
 
                         if lead_id:
                             try:
-                                confidence = await calculate_lead_confidence(lead_id, our_company, tenant_id)
+                                confidence = await calculate_lead_confidence(lead_id, tenant_id)
                                 logger.info("lead_confidence_computed", extra={"lead_id": lead_id, "confidence": confidence})
                                 
                             except Exception as conf_err:
