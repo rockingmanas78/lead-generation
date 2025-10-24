@@ -378,7 +378,7 @@ class MultiTenantRAG:
             [
                 (
                     "system",
-                    "You are a helpful assistant that computes confidence, that is, how much a lead is probable to match the service provider based on the lead description provided as lead text. You have context as the data of service provider. Give the value as an decimal ranging from 0 to 1, 0 depicting no chances of lead closing and 1 depicting high chances of lead closing.",
+                    "You are a helpful assistant that computes confidence, that is, how much a lead is probable to match the service provider based on the lead description provided as lead text. You have context as the data of service provider. Give the value as an decimal ranging from 0 to 1, 0 depicting no chances of lead closing and 1 depicting high chances of lead closing. The output should be a decimal value ranging from 0 to 1 only, and no ther text or anothing other that the numeric value",
                 ),
                 ("human", "Context: {context}\n\nQuestion: {lead_text}"),
             ]

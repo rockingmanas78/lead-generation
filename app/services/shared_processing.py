@@ -262,9 +262,8 @@ async def process_urls_batch(
                             "emails": emails_clean,
                             "phones": phones_clean,
                             "locations": normalized_locations,
+                            "description": description[:100],
                         })
-                        print(created_lead)
-                        print(created_lead.id, "created lead id")
                         lead_id = created_lead.id
 
 

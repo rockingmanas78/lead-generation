@@ -8,6 +8,7 @@ rag = MultiTenantRAG()
 
 async def calculate_lead_confidence(lead_id: str, tenant_id: str) -> float | None:
     """Compute confidence for a lead and update DB."""
+    # pass lead object, rather than fetching from api
     lead = await db.lead.find_unique(where={"id": lead_id})
     print(f"Calculating confidence for lead ID: {lead_id}")
     if not lead:
@@ -24,15 +25,21 @@ async def calculate_lead_confidence(lead_id: str, tenant_id: str) -> float | Non
         sources=[IngestionSourcesEnum.company_profile, IngestionSourcesEnum.knowledge_documents],
     )
 
+    print(f"Raw confidence string from LLM: {confidence_str}")
+
     # convert string confidence to float (if possible)
     try:
         confidence = float(confidence_str)
     except ValueError:
         confidence = None
 
-    await db.lead.update(
+    print(f"Parsed confidence value: {confidence}")
+
+    updated_lead = await db.lead.update(
         where={"id": lead_id},
         data={"confidence": confidence}  # ✅ use your DB field name
     )
+
+    print(f"Updated lead ID {updated_lead} with confidence: {confidence}")
 
     return confidence
