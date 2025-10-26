@@ -39,7 +39,12 @@ async def analyse_email(request: EmailSentimentAnalysisRequest, http_request: Re
     dependencies=[Depends(JWTBearer())],       # unchanged
 )
 async def email_template_generator(request: ColdEmailTemplateRequest):
-    return await email_controller.generate_email_template(request)
+    try:
+        return await email_controller.generate_email_template(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate cold email template: {str(e)}")
 
 
 @router.post(

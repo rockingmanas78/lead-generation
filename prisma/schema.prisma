@@ -79,6 +79,7 @@ model Tenant {
   leads              Lead[]
   jobs               LeadGenerationJob[]
   PaymentTransaction PaymentTransaction[]
+  RagReadiness       RagReadiness?
   TenantOnboarding   TenantOnboarding?
   UsageCounter       UsageCounter[]
   UsageEvent         UsageEvent[]
@@ -228,19 +229,27 @@ model Variable {
 }
 
 model EmailTemplate {
-  id            String          @id @default(uuid())
-  tenantId      String
-  name          String
-  subject       String
-  body          String
-  from_         String          @map("from")
-  to            String
-  createdAt     DateTime        @default(now())
-  deletedAt     DateTime?
-  bulkEmailJobs BulkEmailJob[]
-  campaigns     EmailCampaign[]
-  tenant        Tenant          @relation(fields: [tenantId], references: [id])
-  variable      Variable[]
+  id              String          @id @default(uuid())
+  tenantId        String
+  name            String
+  subject         String
+  body            String
+  from_           String          @map("from")
+  to              String
+  createdAt       DateTime        @default(now())
+  deletedAt       DateTime?
+  preheader       String?
+  unsubscribe_url String?
+  logo_url        String?
+  brand_colors    Json?
+  font_family     String?
+  show_header     Boolean         @default(true)
+  show_footer     Boolean         @default(true)
+  text_part       String?
+  bulkEmailJobs   BulkEmailJob[]
+  campaigns       EmailCampaign[]
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  variable        Variable[]
 }
 
 model EmailCampaign {
@@ -425,16 +434,24 @@ model WebsiteContent {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model TenantRAG {
-  id         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id  String
-  source     String
-  sourceId   String
-  embedding  Unsupported("vector")?
-  created_at DateTime               @default(now()) @db.Timestamptz(6)
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id       String
+  source          String
+  sourceId        String
+  embedding       Unsupported("vector")?
+  created_at      DateTime               @default(now()) @db.Timestamptz(6)
+  chunk_hash      String?
+  version         Int?                   @default(1)
+  is_active       Boolean?               @default(true)
+  updated_at      DateTime?              @default(now()) @db.Timestamptz(6)
+  embedding_model String?
+  simhash_bigint  BigInt?
 
   @@unique([tenant_id, source, sourceId], map: "tenantrag_unique_tenant_source_sourceid")
-  @@index([embedding])
+  @@unique([tenant_id, chunk_hash], map: "tenantrag_tenant_hash_uq")
   @@index([tenant_id], map: "idx_tenant_rag_tenant_id")
+  @@index([tenant_id, is_active, updated_at(sort: Desc)], map: "tenantrag_active_updated_idx")
+  @@index([tenant_id, source], map: "tenantrag_source_idx")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -734,6 +751,15 @@ model MeetingOffer {
   MeetingIntent MeetingIntent @relation(fields: [intentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([intentId, slotStart, slotEnd], map: "MeetingOffer_unique_slot_per_intent")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model RagReadiness {
+  tenant_id   String   @id
+  score       Int
+  components  Json
+  computed_at DateTime @default(now()) @db.Timestamptz(6)
+  Tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 enum PlanType {

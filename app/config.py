@@ -19,5 +19,10 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM")
 
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
+S3_BUCKET_DOCS = os.getenv("S3_BUCKET_DOCS")
+AWS_REGION = os.getenv("AWS_REGION")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set")

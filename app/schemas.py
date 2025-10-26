@@ -67,8 +67,16 @@ class IngestionSourcesEnum(str, Enum):
     website_content = "website_content"
 
 class IngestionRequest(BaseModel):
-    sources: list[IngestionSourcesEnum] | None
+    sources: list[IngestionSourcesEnum] | None = None
 
+class IngestEntityResponse(BaseModel):
+    inserted: int
+    reused: int
+    deactivated: int
+    skipped_similar: int
+
+class ReadinessScoreResponse(BaseModel):
+    score: int
 class IngestionResponse(BaseModel):
     message: str
 
@@ -104,9 +112,35 @@ class EmailSentimentAnalysisResponse(BaseModel):
 
 class ColdEmailTemplateRequest(BaseModel):
     user_prompt: str
+    # MVP customisation (snake_case)
+    logo_url: Optional[str] = None
+    brand_colors: List[str] = Field(default_factory=list)  # ordered
+    font_family: Optional[str] = None
+    show_header: bool = True
+    show_footer: bool = True
+    preheader: Optional[str] = None
+    unsubscribe_url: Optional[str] = None
 
 class ColdEmailTemplateResponse(BaseModel):
-    template: str
+    # template: str
+    subject: str
+    body: str       # FULL compiled HTML (this maps to your Prisma `body`)
+    text_part: str  
+
+class EmailContent(BaseModel):
+    # Copy blocks (no HTML here; renderer will wrap)
+    greeting: str = Field(default="Hi {{contactName}},")
+    opener: str
+    value_props: List[str] = Field(default_factory=list)   # bullets (3–5)
+    body_paragraph: Optional[str] = None                   # optional mid paragraph
+    cta_text: Optional[str] = None                         # e.g., "Start free trial"
+    cta_url: Optional[str] = None                          # e.g., "https://salefunnel.in/signup"
+    closing: str = Field(default="Looking forward to hearing from you,")
+    signature: Optional[str] = None                        # e.g., "— Team SalesFunnel"
+
+    # Optional contact lines (used only if present)
+    contact_email: Optional[str] = None                    # "mailto:" is added by renderer
+    contact_phone: Optional[str] = None  
 
 class PersonaliseEmailRequest(BaseModel):
     template: str
