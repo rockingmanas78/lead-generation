@@ -21,6 +21,7 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "phonenumbers>=8.13.45",
     "tldextract>=5.1.2",
+    "boto3>=1.40,<2.0",
 ]
 
 [tool.prisma]
