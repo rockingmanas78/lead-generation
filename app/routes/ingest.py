@@ -38,7 +38,7 @@ async def start_ingestion(request: IngestionRequest, http_request: Request, back
     tenant_id = await _tenant_id_from_request(http_request)
 
     # convert enums to their string values for the service
-    source_values = [s.value for s in request.sources] if request.sources else None
+    source_values = [s.value for s in request.sources] if request.sources else [e.value for e in IngestionSourcesEnum]
 
     background_tasks.add_task(ingest_service.run_ingestion, source_values, tenant_id)
     return IngestionResponse(message="Ingestion started")
