@@ -3,7 +3,8 @@
   "build": { "builder": "NIXPACKS" },
   "deploy": {
     "preDeployCommand": [
-      "prisma generate && playwright install chromium"
+      "prisma generate",
+      "playwright install chromium"
     ],
     "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port 8080"
   }
