@@ -58,6 +58,7 @@ Keys:
 Rules:
 - Total body length target: 120–180 words.
 - Allowed merge vars ONLY: {{contactName}}, {{companyName}}, {{contactEmail}}, {{contactPhone}}, {{contactAddress}}.
+- Use **double curly braces** for all template variables. Do NOT use single braces {{}}.
 - No generic fluff ("cutting-edge solutions", "synergy"), no spammy claims or hype.
 - Subject must be descriptive and value-led (avoid vague clickbait).
 - Preheader (if provided by server) should be supported by opener (don’t duplicate).
