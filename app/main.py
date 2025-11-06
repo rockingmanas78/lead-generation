@@ -9,9 +9,19 @@ configure_logging()
 
 app = FastAPI(lifespan=lifespan)
 
+# name the real origins you use
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://ai-sales-api-poc-staging.up.railway.app",
+    "https://dashboard.salefunnel.in",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
