@@ -447,7 +447,6 @@ model TenantRAG {
   embedding_model String?
   simhash_bigint  BigInt?
 
-  @@unique([tenant_id, source, sourceId], map: "tenantrag_unique_tenant_source_sourceid")
   @@unique([tenant_id, chunk_hash], map: "tenantrag_tenant_hash_uq")
   @@index([tenant_id], map: "idx_tenant_rag_tenant_id")
   @@index([tenant_id, is_active, updated_at(sort: Desc)], map: "tenantrag_active_updated_idx")
@@ -594,6 +593,7 @@ model AppEvent {
   context       Json     @default("{}")
   event_version Int      @default(1) @db.SmallInt
   schema_key    String?
+  event_type    String   @default("UI")
 
   @@index([event_name, occurred_at(sort: Desc)], map: "idx_app_event_name_time")
   @@index([occurred_at], map: "idx_app_event_time")

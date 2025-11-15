@@ -351,6 +351,28 @@ class Ingest:
         new_texts: list[str] = []
         new_meta: list[tuple[str, int, str]] = []  # (chunk_hash, simhash, sourceId)
 
+        # for raw_text in chunks:
+        #     text = normalize_text(raw_text)
+        #     if not text:
+        #         continue
+        #     chunk_hash = sha256_hex(text)
+        #     seen_hashes.add(chunk_hash)
+
+        #     if chunk_hash in existing_hashes:
+        #         await self.db.query_raw(
+        #             'UPDATE "TenantRAG" SET updated_at = now(), is_active = true WHERE tenant_id = $1 AND chunk_hash = $2',
+        #             tenant_id, chunk_hash
+        #         )
+        #         reused += 1
+        #         continue
+
+        #     sim = simhash64(text)
+        #     if existing_simhashes and any(hamming_distance(sim, es) <= self.simhash_threshold_bits for es in existing_simhashes):
+        #         skipped_similar += 1
+        #         continue
+
+        #     new_texts.append(text)
+        #     new_meta.append((chunk_hash, sim, entity_key))
         for raw_text in chunks:
             text = normalize_text(raw_text)
             if not text:
@@ -366,13 +388,23 @@ class Ingest:
                 reused += 1
                 continue
 
+            # compute 64-bit simhash
             sim = simhash64(text)
-            if existing_simhashes and any(hamming_distance(sim, es) <= self.simhash_threshold_bits for es in existing_simhashes):
+
+            # force into signed 64-bit range for Postgres BIGINT
+            if sim >= 2**63:
+                sim -= 2**64
+
+            if existing_simhashes and any(
+                hamming_distance(sim, es) <= self.simhash_threshold_bits
+                for es in existing_simhashes
+            ):
                 skipped_similar += 1
                 continue
 
             new_texts.append(text)
             new_meta.append((chunk_hash, sim, entity_key))
+
 
         # Embed and insert new hashes
         for text, (chunk_hash, sim_value, source_id) in zip(new_texts, new_meta):
