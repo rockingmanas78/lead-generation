@@ -21,13 +21,16 @@ async def _tenant_id_from_request(http_request: Request) -> str:
     token = await JWTBearer()(http_request)
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        print("Decoded JWT payload:", payload)
         tenant_id = payload.get("tenantId")
         if not tenant_id:
+            print("tenantId missing in token payload.")
             raise HTTPException(status_code=403, detail="tenantId missing in token.")
         # Set RLS guard per request (Postgres GUC)
         await db.query_raw('SELECT set_config(\'app.tenant_id\', $1, false)', tenant_id)
         return tenant_id
     except Exception:
+        print("Failed to decode JWT token.")
         raise HTTPException(status_code=403, detail="Invalid token.")
 
 # -----------------------
