@@ -34,6 +34,7 @@ class ExtractController:
             contact_results = await self.extractor.extract(urls)
             filtered_results: Dict[str, ContactInfo] = {}
             for url, contact in contact_results.items():
+                print(f"Extracted for {url} →", contact)
                 if contact and (contact.get("emails") or contact.get("phones")):
                     try:
                         filtered_results[url] = ContactInfo(**contact)
@@ -75,29 +76,136 @@ class ExtractController:
             job_started_at=datetime.utcnow(),
         )
 
+# async def _run_extraction_job(
+#         self, request: CombinedSearchExtractRequest, user_id: str, job_id: str
+#     ):
+#         collected = 0
+#         result_index = 0
+#         offset = request.offset
+#         required_count = request.num_results
+#         current_generated_count = 0
+
+#         # infer locations from the user prompt — used downstream as a soft region filter
+#         inferred_locations = extract_locations(request.prompt)
+
+#         try:
+#             raw_search_response = await self.search_engine.search_with_offset(
+#                 prompt=request.prompt,
+#                 user_id=user_id,
+#                 offset=offset,
+#                 num_results=required_count,
+#             )
+
+#             session_id = raw_search_response["session_info"]["session_id"]
+#             results = raw_search_response["results"]
+
+#             logger.info("search_kickoff", extra={
+#                 "job": job_id,
+#                 "session": session_id,
+#                 "initial_results": len(results),
+#                 "summary": {
+#                     "requested": required_count,
+#                     "returned": len(results),
+#                     "overfetched_items": max(0, len(results) - required_count),
+#                     "keywords_used": raw_search_response["query_info"]["generated_queries"],
+#                     "discovered_sources": raw_search_response["session_info"]["total_results"],
+#                     "contact_focus": "email",
+#                     "locations_used": inferred_locations
+#                 }
+#             })
+
+#             while collected < required_count:
+#                 if result_index >= len(results):
+#                     more = await self.search_engine.get_more_results(
+#                         session_id=session_id, num_results=10
+#                     )
+#                     new_results = more.get("results", [])
+#                     if not new_results:
+#                         logger.info("no_more_results", extra={"job": job_id})
+#                         break
+#                     results.extend(new_results)
+
+#                 remaining_needed = required_count - collected
+#                 current_chunk = []
+#                 chunk_urls: List[str] = []
+
+#                 while result_index < len(results) and len(current_chunk) < remaining_needed:
+#                     result = results[result_index]
+#                     current_chunk.append(result)
+#                     chunk_urls.append(result.link)
+#                     result_index += 1
+
+#                 contact_results = await self.extractor.extract(
+#                     urls=chunk_urls,
+#                     user_id=user_id,
+#                     job_id=job_id,
+#                     current_generated_count=current_generated_count,
+#                     region_filters=inferred_locations,  # << pass dynamic locations
+#                 )
+
+#                 accepted_in_chunk = 0
+#                 for index_in_chunk, result in enumerate(current_chunk):
+#                     url = chunk_urls[index_in_chunk]
+#                     contact = contact_results.get(url)
+#                     if contact and (contact.get("emails") or contact.get("phones")):
+#                         try:
+#                             collected += 1
+#                             current_generated_count += 1
+#                             accepted_in_chunk += 1
+#                         except Exception as validation_error:
+#                             logger.warning(f"Skipping bad contact info for {url}: {validation_error}")
+#                     else:
+#                         logger.info(f"No contact info for {url}")
+
+#                 logger.info("chunk_done", extra={
+#                     "job": job_id, "chunk_urls": len(chunk_urls), "accepted": accepted_in_chunk, "collected": collected
+#                 })
+
+#             await self.db.leadgenerationjob.update(
+#                 where={"id": job_id},
+#                 data={"status": "COMPLETED", "completedAt": datetime.utcnow()},
+#             )
+#             logger.info("job_completed", extra={"job": job_id, "generated": current_generated_count})
+
+#         except GoogleSearchError as cse_error:
+#             logger.error("job_failed_cse", extra={"job": job_id, "error": str(cse_error)})
+#             await self.db.leadgenerationjob.update(
+#                 where={"id": job_id},
+#                 data={"status": "FAILED"},
+#             )
+#         except Exception as unexpected_error:
+#             logger.error(f"Job {job_id} failed: {unexpected_error}")
+#             await self.db.leadgenerationjob.update(
+#                 where={"id": job_id},
+#                 data={"status": "FAILED"},
+#             )
+
     async def _run_extraction_job(
         self, request: CombinedSearchExtractRequest, user_id: str, job_id: str
     ):
-        collected = 0
-        result_index = 0
-        offset = request.offset
         required_count = request.num_results
-        current_generated_count = 0
-
-        # infer locations from the user prompt — used downstream as a soft region filter
+        offset = request.offset
+        max_attempts = 200  # safety limit to prevent infinite loops
+        attempts = 0
+        
+        # Track all processed URLs to avoid duplicates
+        processed_urls = set()
         inferred_locations = extract_locations(request.prompt)
+        
+        collected_leads = 0
 
         try:
+            # Initial search
             raw_search_response = await self.search_engine.search_with_offset(
                 prompt=request.prompt,
                 user_id=user_id,
                 offset=offset,
-                num_results=required_count,
+                num_results=required_count,  # fetch more initially
             )
-
+            
             session_id = raw_search_response["session_info"]["session_id"]
             results = raw_search_response["results"]
-
+            
             logger.info("search_kickoff", extra={
                 "job": job_id,
                 "session": session_id,
@@ -112,60 +220,152 @@ class ExtractController:
                     "locations_used": inferred_locations
                 }
             })
+            
+            # Recursive function to fetch and extract until we have enough leads
+            async def fetch_and_extract_until_complete(
+                current_results: list,
+                collected: int,
+                attempts: int
+            ) -> int:
+                """
+                Recursively fetch more URLs and extract contacts until required count is met.
+                Returns: final collected lead count
+                """
+                nonlocal processed_urls
+                
+                # Safety check
+                if attempts >= max_attempts:
+                    logger.warning(f"Reached max attempts ({max_attempts}) for job {job_id}")
+                    return collected
+                
+                #CHECK DB COUNT FIRST (before doing anything)
+                db_count = await self.db.lead.count(
+                    where={"tenantId": user_id, "jobId": job_id}
+                )
+                
+                # Stop immediately if target reached
+                if db_count >= required_count:
+                    logger.info(f"Target reached: {db_count}/{required_count} leads - STOPPING")
+                    return db_count
+                
+                # Update collected to match DB
+                collected = db_count
+                logger.info(f"Current progress: {collected}/{required_count} leads")
+                
+                # Filter out already processed URLs
+                new_urls = [r for r in current_results if r.link not in processed_urls]
+                
+                if not new_urls:
+                    logger.info("No new URLs available, fetching more from search engine...")
+                    
+                    # Fetch more results from search engine
+                    try:
+                        more_search_results = await self.search_engine.get_more_results(
+                            session_id=session_id,
+                            num_results=required_count
+                        )
+                        
+                        new_results = more_search_results.get("results", [])
+                        has_more = more_search_results["pagination"]["has_more"]
+                        
+                        if not new_results or not has_more:
+                            logger.warning(f"Search exhausted. Collected {collected}/{required_count} leads")
+                            return collected
+                        
+                        logger.info(f"Fetched {len(new_results)} more URLs from search engine")
+                        
+                        # Recurse with new results
+                        return await fetch_and_extract_until_complete(
+                            new_results,
+                            collected,
+                            attempts + 1
+                        )
+                        
+                    except Exception as search_error:
+                        logger.error(f"Error fetching more results: {search_error}")
+                        return collected
+                
+                # Process batch of URLs
+                #Smart batch size: don't process more than needed
+                db_count = await self.db.lead.count(
+                    where={"tenantId": user_id, "jobId": job_id}
+                )
+                remaining_needed = required_count - db_count
 
-            while collected < required_count:
-                if result_index >= len(results):
-                    more = await self.search_engine.get_more_results(
-                        session_id=session_id, num_results=10
-                    )
-                    new_results = more.get("results", [])
-                    if not new_results:
-                        logger.info("no_more_results", extra={"job": job_id})
-                        break
-                    results.extend(new_results)
+                if remaining_needed <= 0:
+                    logger.info(f"Already have {db_count}/{required_count} - STOPPING")
+                    return db_count
 
-                remaining_needed = required_count - collected
-                current_chunk = []
-                chunk_urls: List[str] = []
-
-                while result_index < len(results) and len(current_chunk) < remaining_needed:
-                    result = results[result_index]
-                    current_chunk.append(result)
-                    chunk_urls.append(result.link)
-                    result_index += 1
-
+                # Process only what we need (with small buffer for rejections)
+                batch_size = min(remaining_needed + 0, 20)
+                batch_urls = [r.link for r in new_urls[:batch_size]]
+                processed_urls.update(batch_urls)
+                
+                logger.info(f"Processing batch of {len(batch_urls)} URLs (attempt {attempts + 1})")
+                
+                # Extract contacts from URLs
                 contact_results = await self.extractor.extract(
-                    urls=chunk_urls,
+                    urls=batch_urls,
                     user_id=user_id,
                     job_id=job_id,
-                    current_generated_count=current_generated_count,
-                    region_filters=inferred_locations,  # << pass dynamic locations
+                    current_generated_count=collected,
+                    region_filters=inferred_locations,
                 )
-
-                accepted_in_chunk = 0
-                for index_in_chunk, result in enumerate(current_chunk):
-                    url = chunk_urls[index_in_chunk]
+                
+                # Count valid leads extracted in this batch
+                leads_added = 0
+                for url in batch_urls:
                     contact = contact_results.get(url)
+                    
                     if contact and (contact.get("emails") or contact.get("phones")):
-                        try:
-                            collected += 1
-                            current_generated_count += 1
-                            accepted_in_chunk += 1
-                        except Exception as validation_error:
-                            logger.warning(f"Skipping bad contact info for {url}: {validation_error}")
+                        leads_added += 1
+                        logger.debug(f"Valid lead found: {url}")
                     else:
-                        logger.info(f"No contact info for {url}")
+                        logger.debug(f"No valid contact: {url}")
+                
+                new_collected = collected + leads_added
+                
+                db_count = await self.db.lead.count(where={"tenantId": user_id, "jobId": job_id})
+                new_collected = db_count  # Sync with actual DB
 
-                logger.info("chunk_done", extra={
-                    "job": job_id, "chunk_urls": len(chunk_urls), "accepted": accepted_in_chunk, "collected": collected
-                })
-
+                logger.info(f"Batch complete: +{leads_added} leads | Total: {new_collected}/{required_count}")
+                
+                # Update job progress
+                await self.db.leadgenerationjob.update(
+                    where={"id": job_id},
+                    data={"generatedCount": new_collected},
+                )
+                
+                # Recurse if we need more leads
+                if new_collected < required_count:
+                    remaining_urls = new_urls[batch_size:]  # Use actual batch_size, not hardcoded 20
+                    return await fetch_and_extract_until_complete(
+                        remaining_urls,
+                        new_collected,
+                        attempts + 1
+                    )
+                
+                return new_collected
+            
+            # Start recursive extraction
+            final_collected = await fetch_and_extract_until_complete(
+                results,
+                collected_leads,
+                attempts
+            )
+            
+            logger.info(f"Job {job_id} completed: {final_collected}/{required_count} leads generated")
+            
+            # Mark job as completed
             await self.db.leadgenerationjob.update(
                 where={"id": job_id},
-                data={"status": "COMPLETED", "completedAt": datetime.utcnow()},
+                data={
+                    "status": "COMPLETED",
+                    "completedAt": datetime.utcnow(),
+                    "generatedCount": final_collected
+                },
             )
-            logger.info("job_completed", extra={"job": job_id, "generated": current_generated_count})
-
+            
         except GoogleSearchError as cse_error:
             logger.error("job_failed_cse", extra={"job": job_id, "error": str(cse_error)})
             await self.db.leadgenerationjob.update(
@@ -208,6 +408,7 @@ class ExtractController:
 
             contact_infos: List[ContactInfo] = []
             for lead in leads:
+                print("RAW LEAD:", lead)
                 contact_info = ContactInfo(
                     emails=lead.contactEmail,
                     phones=lead.contactPhone,
@@ -215,6 +416,18 @@ class ExtractController:
                     company_name=lead.companyName,
                     description="",
                 )
+                print(
+                    "CLEANED LEAD | Company:", lead.companyName,
+                    "| Emails:", lead.contactEmail,
+                    "| Phones:", lead.contactPhone,
+                    "| Address:", lead.contactAddress
+                )
+
+                if not lead.contactEmail and not lead.contactPhone:
+                    print("SKIPPING LEAD: No email or phone ->", lead.companyName)
+                else:
+                    print("ADDING LEAD:", lead.companyName)
+
                 contact_infos.append(contact_info)
 
             job_status_response = JobStatusResponse(

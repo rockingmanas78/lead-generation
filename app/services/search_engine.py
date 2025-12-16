@@ -10,7 +10,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers.string import StrOutputParser
 
 from app.schemas import SearchResult
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, GOOGLE_API_KEY, GOOGLE_CSE_ID
+from app.config import OPENAI_API_KEY, OPENAI_MODEL, OPENAI_MODEL_DIVERSIFY, GOOGLE_API_KEY, GOOGLE_CSE_ID
 from app.services.location import extract_locations
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,13 @@ Locations to target: {", ".join(inferred_locations) if inferred_locations else "
 User prompt: {user_prompt}
 """.strip()
 
-        chain = ChatPromptTemplate.from_messages([("system", system_prompt)]) | self.llm | StrOutputParser()
+        llm = ChatOpenAI(
+        api_key=OPENAI_API_KEY,
+        model=OPENAI_MODEL_DIVERSIFY,                 #function uses GPT-4.1
+        temperature=0.4
+        )
+        
+        chain = ChatPromptTemplate.from_messages([("system", system_prompt)]) | llm | StrOutputParser()
         output_text = await chain.ainvoke({})
 
         # Parse back to a flat list from comma/line separated values
@@ -99,6 +105,69 @@ User prompt: {user_prompt}
         queries = [query for query in queries if len(query) > 5][:5]
         logger.info("llm_queries", extra={"queries": queries})
         return queries
+
+    async def diversify_prompt(
+        self,
+        user_prompt: str,
+        inferred_locations: Optional[List[str]] = None,
+        contact_focus: str = "email",
+    ) -> List[str]:
+        """
+        Second-stage fallback LLM function.
+        Creates broader, more creative variations of the user prompt
+        when Google's search is exhausted. Uses GPT-4.1 only here.
+        Returns up to 5 diversified queries.
+        """
+
+        if inferred_locations is None:
+            inferred_locations = extract_locations(user_prompt)
+
+        system_prompt = f"""
+You are an advanced query diversifier. The system failed to find enough Google results,
+so your job is to rewrite the user's intent into 5 broader, creative search queries
+that still aim to find company contact information.
+
+Rules:
+- Keep the queries plain text, comma-separated, no numbering and no markdown.
+- Use synonyms like "vendor", "supplier", "business directory", "corporate office", 
+"customer service", "email support", "official contact".
+- Add wider intent: industry keywords, related services, indirect ways people list contacts.
+- Still avoid aggregator spam.
+- Use the user's locations naturally.
+
+Locations: {", ".join(inferred_locations) if inferred_locations else "None"}
+User Prompt: {user_prompt}
+""".strip()
+
+        llm = ChatOpenAI(
+            api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL_DIVERSIFY,      #function uses GPT-4.1
+            temperature=0.8
+        )
+
+        chain = ChatPromptTemplate.from_messages([("system", system_prompt)]) | llm | StrOutputParser()
+        output_text = await chain.ainvoke({})
+
+        # Parse back to a clean list
+        raw_lines = [
+            line.strip().strip('"').strip("'")
+            for line in output_text.split("\n")
+            if line.strip()
+        ]
+
+        diversified: List[str] = []
+        for raw_line in raw_lines:
+            parts = [
+                p.strip().strip('"').strip("'")
+                for p in raw_line.split(",")
+                if p.strip()
+            ]
+            diversified.extend(parts)
+
+        diversified = [q for q in diversified if len(q) > 5][:5]
+
+        logger.info("llm_diversified_queries", extra={"queries": diversified})
+        return diversified
 
     def build_query(self, query: str, inferred_locations: Optional[List[str]] = None) -> str:
         """
@@ -202,7 +271,13 @@ User prompt: {user_prompt}
             return
 
         needed = target_count - current_count
-        inferred_locations = extract_locations(session.original_prompt)
+        raw_locations = extract_locations(session.original_prompt)
+        inferred_locations = [
+            loc for loc in raw_locations
+            if loc.replace(",", "").replace(".", "").count(" ") <= 1
+            and len(loc) <= 30
+            and not loc.lower().startswith("agri")
+        ]
 
         for query in session.queries:
             if needed <= 0:
@@ -253,10 +328,29 @@ User prompt: {user_prompt}
         session_id = self.generate_session_id(user_id, prompt)
 
         if session_id not in self.sessions:
-            inferred_locations = extract_locations(prompt)
+            raw_locations = extract_locations(prompt)
+            inferred_locations = [
+                loc for loc in raw_locations
+                if loc.replace(",", "").replace(".", "").count(" ") <= 1
+                and len(loc) <= 30
+                and not loc.lower().startswith("agri")
+            ]
             queries = await self.prompt_to_queries(prompt, inferred_locations)
             print(f"Generated queries: {queries} for prompt: {prompt} with locations: {inferred_locations}")
             self.sessions[session_id] = SearchSession(session_id, prompt, queries)
+            await self.fetch_more_results(self.sessions[session_id], offset + num_results + 10)
+
+        # FALLBACK: No results → diversify prompt
+        if len(self.sessions[session_id].results) == 0:
+            print("Primary queries returned no results. Running diversification fallback...")
+            
+            diversified = await self.diversify_prompt(prompt, inferred_locations)
+            print("Diversified queries:", diversified)
+
+            # Replace queries in the session
+            self.sessions[session_id].queries = diversified
+
+            # Retry fetching with fallback queries
             await self.fetch_more_results(self.sessions[session_id], offset + num_results + 10)
 
         session = self.sessions[session_id]

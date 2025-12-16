@@ -33,6 +33,7 @@ def normalize_locations(locations: Optional[List[str]]) -> List[str]:
         if not isinstance(raw_location, str):
             continue
         cleaned = re.sub(r"\s+", " ", raw_location).strip(" ,")
+        cleaned = cleaned.rstrip(".")
         key = cleaned.lower()
         if cleaned and key not in seen_lower:
             seen_lower.add(key)
@@ -101,6 +102,16 @@ async def process_urls_batch(
         supplemental_texts_map: Dict[str, List[str]] = {}
 
         generated_count = current_generated_count
+
+        stats = {
+            "urls_processed": 0,
+            "contacts_extracted": 0,
+            "rejected_no_contact": 0,
+            "rejected_focus_filter": 0,
+            "rejected_region_filter": 0,
+            "rejected_duplicate": 0,
+            "saved_to_db": 0
+        }
 
         for batch_start in range(0, len(urls), batch_size):
             batch_urls = urls[batch_start: batch_start + batch_size]
@@ -201,9 +212,15 @@ async def process_urls_batch(
 
             # Persist accepted leads from this batch
             for url in batch_urls:
+                stats["urls_processed"] += 1
                 contact = results.get(url)
+
                 if not contact:
+                    stats["rejected_no_contact"] += 1
+                    logger.debug(f"REJECTED (no contact data): {url}")
                     continue
+
+                stats["contacts_extracted"] += 1
 
                 # Clean before decision
                 emails_clean = clean_emails(contact.get("emails") or [])
@@ -212,13 +229,15 @@ async def process_urls_batch(
                 company_name_value = contact.get("company_name", url) or url
                 description = contact.get("description", "") or ""
 
-                # Focus rule: require email when CONTACT_FOCUS == 'email'
+                # Focus rule: require email when CONTACT_FOCUS == 'email' NEW: accept leads that have phone but no email.
                 if CONTACT_FOCUS == "email" and not emails_clean:
-                    logger.info("lead_rejected_by_focus", extra={"url": url, "contact_focus": CONTACT_FOCUS})
-                    continue
+                     stats["rejected_focus_filter"] += 1
+                     logger.info(f"REJECTED (focus filter - no email/phone): {url}")
+                     logger.debug(f"   Details: emails={emails_clean}, phones={phones_clean}")
+                     continue
 
-                # Soft region gating based ONLY on user-provided locations
-                if location_patterns:
+                # Soft region gating based ONLY on user-provided locations 
+                if location_patterns and normalized_locations:
                     aggregate_text_for_location = " ".join([
                         company_name_value or "",
                         footer_text_map.get(url, "") or "",
@@ -228,66 +247,83 @@ async def process_urls_batch(
                     ])
 
                     if not text_matches_any_location(aggregate_text_for_location, location_patterns):
-                        logger.info(
-                            "lead_rejected_by_region",
-                            extra={"url": url, "locations": normalized_locations}
-                        )
+                        stats["rejected_region_filter"] += 1
+                        logger.info(f"REJECTED (region filter): {url}")
+                        logger.debug(f"   Expected regions: {normalized_locations}")
+                        logger.debug(f"   Text sample: {aggregate_text_for_location[:200]}")
                         continue
 
                 try:
                     existing_lead = await db.lead.find_first(
-                        where={"tenantId": tenant_id, "companyName": company_name_value}
+                        where={"tenantId": tenant_id, "companyName": company_name_value, "jobId": job_id}
                     )
 
-                    if not existing_lead:
-                        # create lead and capture returned record (Prisma returns the created object)
-                        created_lead = await db.lead.create(
-                            data={
-                                "tenantId": tenant_id,
-                                "jobId": job_id,
-                                "companyName": company_name_value,
-                                "contactEmail": emails_clean or [""],
-                                "contactPhone": phones_clean or [""],
-                                "contactAddress": addresses_list or [""],
-                                "description": description or "",
-                            }
-                        )
+                    if existing_lead:
+                        stats["rejected_duplicate"] += 1
+                        logger.info(f"REJECTED (duplicate company): {company_name_value}")
+                        continue
 
-                        # log insertion with context
-                        logger.info("lead_inserted", extra={
-                            "tenant": tenant_id,
-                            "job": job_id,
-                            "url": url,
-                            "company": company_name_value,
-                            "emails": emails_clean,
-                            "phones": phones_clean,
-                            "locations": normalized_locations,
-                            "description": description[:100],
-                        })
-                        lead_id = created_lead.id
+                    # create lead and capture returned record (Prisma returns the created object)
+                    created_lead = await db.lead.create(
+                        data={
+                            "tenantId": tenant_id,
+                            "jobId": job_id,
+                            "companyName": company_name_value,
+                            "contactEmail": emails_clean or [""],
+                            "contactPhone": phones_clean or [""],
+                            "contactAddress": addresses_list or [""],
+                            "description": description or "",
+                        }
+                    )
+
+                    stats["saved_to_db"] += 1
+                    logger.info(f"SAVED TO DB: {company_name_value}")
+                    logger.debug(f"   Emails: {len(emails_clean)}, Phones: {len(phones_clean)}")
+
+                    # log insertion with context
+                    logger.info("lead_inserted", extra={
+                        "tenant": tenant_id,
+                        "job": job_id,
+                        "url": url,
+                        "company": company_name_value,
+                        "emails": emails_clean,
+                        "phones": phones_clean,
+                        "locations": normalized_locations,
+                        "description": description[:100],
+                    })
+                    lead_id = created_lead.id
 
 
-                        if lead_id:
-                            try:
-                                confidence = await calculate_lead_confidence(lead_id, tenant_id)
-                                logger.info("lead_confidence_computed", extra={"lead_id": lead_id, "confidence": confidence})
-                                
-                            except Exception as conf_err:
-                                logger.error(f"Failed to compute confidence for lead {lead_id}: {conf_err}")
+                    if lead_id:
+                        try:
+                            confidence = await calculate_lead_confidence(lead_id, tenant_id)
+                            logger.info("lead_confidence_computed", extra={"lead_id": lead_id, "confidence": confidence})
+                            
+                        except Exception as conf_err:
+                            logger.error(f"Failed to compute confidence for lead {lead_id}: {conf_err}")
 
-                        generated_count += 1
-                        
+                    generated_count += 1
+                    
 
 
                     
                 except Exception as persist_error:
                     logger.error(f"Failed to insert lead for {url}: {persist_error}")
-                    # do not increment on failure
 
-            await db.leadgenerationjob.update(
-                where={"id": job_id}, data={"generatedCount": generated_count}
-            )
-            logger.info("batch_generated_progress", extra={"job": job_id, "generated_count": generated_count})
+
+        success_rate = (stats['saved_to_db'] / stats['urls_processed'] * 100) if stats['urls_processed'] > 0 else 0
+
+        logger.info(f"""
+        BATCH PROCESSING COMPLETE:
+        - URLs Processed: {stats['urls_processed']}
+        - Contacts Extracted: {stats['contacts_extracted']}
+        - Rejected (no contact): {stats['rejected_no_contact']}
+        - Rejected (focus filter): {stats['rejected_focus_filter']}
+        - Rejected (region filter): {stats['rejected_region_filter']}
+        - Rejected (duplicate): {stats['rejected_duplicate']}
+        - Saved to DB: {stats['saved_to_db']}
+        - Success Rate: {success_rate:.1f}%
+        """)
 
         return results
 
