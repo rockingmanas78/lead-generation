@@ -7,9 +7,10 @@ from app.routes.ingest import router as ingest_router
 from app.routes.rag import router as rag_router
 from app.routes.spam_score import router as spam_score_router
 from app.routes.get_company_size import router as get_company_size_router
-
+from app.routes.email_lead import router as email_lead_router   #new import for email lead Genration
 router = APIRouter()
 
+router.include_router(email_lead_router) #include email lead router
 router.include_router(search_router)#leave
 router.include_router(email_router)
 router.include_router(extract_router)
